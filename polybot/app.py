@@ -10,6 +10,11 @@ logging.basicConfig(level=logging.INFO) # Set logging level
 logger = logging.getLogger(__name__) # Create the logger
 app = flask.Flask(__name__) # Initialize the flask app
 
+@app.route('/health', methods=['GET'])
+def health_check():
+    # You can add more checks here, like database or cache checks
+    return "OK", 200
+
 # --- Configuration ---
 secrets_client = boto3.client('secretsmanager', region_name="eu-north-1")
 response = secrets_client.get_secret_value(SecretId="polybot-secrets")
