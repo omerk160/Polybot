@@ -18,10 +18,12 @@ secrets = json.loads(response['SecretString'])
 os.environ["TELEGRAM_TOKEN"] = secrets["TELEGRAM_TOKEN"]
 os.environ["S3_BUCKET_NAME"] = secrets["S3_BUCKET_NAME"]
 os.environ["SQS_QUEUE_URL"] = secrets["SQS_QUEUE_URL"]
+os.environ["TELEGRAM_APP_URL"] = secrets["TELEGRAM_APP_URL"]
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 S3_BUCKET_NAME = os.environ["S3_BUCKET_NAME"]
 SQS_QUEUE_URL = os.environ["SQS_QUEUE_URL"]
+TELEGRAM_APP_URL = os.environ["TELEGRAM_APP_URL"]
 
 # --- S3 Client Initialization ---
 s3_client = boto3.client('s3')  # Create S3 client
@@ -43,5 +45,5 @@ def webhook():  # Create method to handle webhook requests
     return 'Ok' # Return 'Ok' to telegram
 
 # --- Main Execution ---
-if __name__ == "__main__": # Check if script is run directly.
-    app.run(host='0.0.0.0', port=8443) # Run the flask app on port 8443, expose to all IPs.
+if __name__ == "__main__":  # Check if script is run directly.
+    app.run(host="0.0.0.0", port=8443, ssl_context=("cert.pem", "key.pem"))  # Enable HTTPS
