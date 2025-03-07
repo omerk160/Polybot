@@ -1,0 +1,8 @@
+
+flask
+boto3
+telebot
+requests
+loguru
+gunicorn
+
