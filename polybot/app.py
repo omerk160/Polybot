@@ -46,16 +46,50 @@ def delete_webhook():
     else:
         logger.error(f"Failed to delete webhook. Response: {response.text}")
 
+def check_webhook_status():
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getWebhookInfo"
+    response = requests.get(url)
+
+    if response.status_code == 200:
+        webhook_info = response.json()
+        if webhook_info['result']['url']:
+            logger.info(f"Webhook is already set to: {webhook_info['result']['url']}")
+            return True
+        else:
+            logger.info("No webhook is set.")
+            return False
+    else:
+        logger.error(f"Failed to get webhook info. Response: {response.text}")
+        return False
+
+# Usage
+if not check_webhook_status():
+    set_webhook()
+
+
 # Function to set the new webhook URL
 def set_webhook():
     delete_webhook()  # Delete the existing webhook first
     webhook_url = f"{TELEGRAM_APP_URL}/{TELEGRAM_TOKEN}"
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook?url={webhook_url}"
-    response = requests.get(url)
-    if response.status_code == 200:
-        logger.info(f"Webhook set successfully: {webhook_url}")
-    else:
-        logger.error(f"Failed to set webhook. Response: {response.text}")
+
+    retry_count = 0
+    max_retries = 5
+
+    while retry_count < max_retries:
+        response = requests.get(url)
+
+        if response.status_code == 200:
+            logger.info(f"Webhook set successfully: {webhook_url}")
+            break
+        elif response.status_code == 429:
+            retry_after = response.json().get('parameters', {}).get('retry_after', 1)
+            logger.info(f"Too many requests. Retrying after {retry_after} seconds...")
+            time.sleep(retry_after)
+            retry_count += 1
+        else:
+            logger.error(f"Failed to set webhook. Response: {response.text}")
+            break
 
 # --- Define Routes ---
 @app.route('/', methods=['GET'])  # Define index page
