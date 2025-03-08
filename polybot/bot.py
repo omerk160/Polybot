@@ -45,20 +45,21 @@ class ObjectDetectionBot:
         return hasattr(msg, 'photo')
 
     def download_user_photo(self, msg):
-        if not self.is_current_msg_photo(msg):
+        if 'photo' not in msg:
             raise RuntimeError('Message does not contain a photo')
 
-        file_info = self.telegram_bot_client.get_file(msg.photo[-1].file_id)
-        data = self.telegram_bot_client.download_file(file_info.file_path)
+    file_info = self.telegram_bot_client.get_file(msg['photo'][-1].file_id)
+    data = self.telegram_bot_client.download_file(file_info.file_path)
 
-        folder_name = 'photos'
-        os.makedirs(folder_name, exist_ok=True)
+    folder_name = 'photos'
+    os.makedirs(folder_name, exist_ok=True)
 
-        file_path = os.path.join(folder_name, os.path.basename(file_info.file_path))
-        with open(file_path, 'wb') as photo:
-            photo.write(data)
+    file_path = os.path.join(folder_name, os.path.basename(file_info.file_path))
+    with open(file_path, 'wb') as photo:
+        photo.write(data)
 
-        return file_path
+    return file_path
+
 
     def send_photo(self, chat_id, img_path):
         if not os.path.exists(img_path):
@@ -111,10 +112,8 @@ class ObjectDetectionBot:
 
                 except Exception as e:
                     logger.error(f"Processing error: {e}")
-                    try:
-                        self.send_text(hardcoded_chat_id, "Error processing the image.")
-                    except telebot.apihelper.ApiTelegramException as e:
-                        logger.error(f"Failed to send error message: {e}")
+                    error_message = f"Error processing the image: {str(e)}"
+                    self.send_text(hardcoded_chat_id, error_message)
             else:
                 try:
                     self.send_text(hardcoded_chat_id, "Please send a photo.")
