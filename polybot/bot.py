@@ -77,35 +77,41 @@ class ObjectDetectionBot:
             return None
 
     def handle_message(self, msg):
-        logger.info(f'Incoming message from {msg.chat.id}')
+        try:
+            # Log the incoming message using dictionary keys
+            logger.info(f'Incoming message from {msg["chat"]["id"]}')
 
-        if self.is_current_msg_photo(msg):
-            try:
-                logger.info('Downloading user photo...')
-                photo_path = self.download_user_photo(msg)
-                logger.info(f'Photo saved at {photo_path}')
+            # Check if the message contains a photo
+            if self.is_current_msg_photo(msg):
+                try:
+                    logger.info('Downloading user photo...')
+                    photo_path = self.download_user_photo(msg)
+                    logger.info(f'Photo saved at {photo_path}')
 
-                logger.info('Uploading to S3...')
-                image_url = self.upload_to_s3(photo_path)
-                self.send_text(msg.chat.id, f"Image uploaded: {image_url}")
+                    logger.info('Uploading to S3...')
+                    image_url = self.upload_to_s3(photo_path)
+                    self.send_text(msg["chat"]["id"], f"Image uploaded: {image_url}")
 
-                logger.info('Sending to YOLOv5...')
-                img_name = os.path.basename(photo_path)
-                yolo_results = self.get_yolo5_results(img_name)
+                    logger.info('Sending to YOLOv5...')
+                    img_name = os.path.basename(photo_path)
+                    yolo_results = self.get_yolo5_results(img_name)
 
-                if yolo_results and 'predictions' in yolo_results:
-                    detected_objects = [obj['class'] for obj in yolo_results['predictions']]
-                    results_text = f"Detected: {', '.join(detected_objects)}" if detected_objects else "No objects detected."
-                else:
-                    results_text = "Error processing the image."
+                    if yolo_results and 'predictions' in yolo_results:
+                        detected_objects = [obj['class'] for obj in yolo_results['predictions']]
+                        results_text = f"Detected: {', '.join(detected_objects)}" if detected_objects else "No objects detected."
+                    else:
+                        results_text = "Error processing the image."
 
-                self.send_text(msg.chat.id, results_text)
+                    self.send_text(msg["chat"]["id"], results_text)
 
-            except Exception as e:
-                logger.error(f"Processing error: {e}")
-                self.send_text(msg.chat.id, "Error processing the image.")
-        else:
-            self.send_text(msg.chat.id, "Please send a photo.")
+                except Exception as e:
+                    logger.error(f"Processing error: {e}")
+                    self.send_text(msg["chat"]["id"], "Error processing the image.")
+            else:
+                self.send_text(msg["chat"]["id"], "Please send a photo.")
+        except Exception as e:
+            logger.error(f"Error handling message: {e}")
+
 
 
 if __name__ == "__main__":
