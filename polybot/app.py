@@ -50,7 +50,7 @@ def delete_webhook():
 def check_webhook_status():
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getWebhookInfo"
     response = requests.get(url)
-
+    check_webhook_status()
     if response.status_code == 200:
         webhook_info = response.json()
         if webhook_info['result']['url']:
@@ -103,6 +103,7 @@ if not check_webhook_status():
 def webhook():  # Create method to handle webhook requests
     req = request.get_json()  # Get the request body as JSON
     logger.info(f'Received webhook request: {req}')  # Log the received request.
+    logger.info(f"Request headers: {request.headers}")
     bot.handle_message(req['message'])  # Send message to bot handle_message
     logger.info(f"Received message: {req['message']}")
     return 'Ok'  # Return 'Ok' to telegram
