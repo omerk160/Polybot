@@ -12,8 +12,8 @@ class ObjectDetectionBot:
         self.telegram_bot_client = telebot.TeleBot(token)
         self.s3_bucket_name = s3_bucket_name
         self.s3_client = boto3.client('s3',
-                                      aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
-                                      aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
+                                      aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+                                      aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
                                       region_name='eu-north-1')
 
         if not telegram_app_url:
@@ -37,17 +37,13 @@ class ObjectDetectionBot:
         except Exception as e:
             logger.error(f"Unknown error occurred while sending message to chat {chat_id}. Error: {e}")
 
-    def send_text_with_quote(self, chat_id, text, quoted_msg_id):
-        self.telegram_bot_client.send_message(chat_id, text, reply_to_message_id=quoted_msg_id)
-
     def is_current_msg_photo(self, msg):
-        return hasattr(msg, 'photo') and bool(msg.photo)  # Fix: Check if 'photo' exists and is not empty
+        return msg.photo is not None
 
     def download_user_photo(self, msg):
-        if not self.is_current_msg_photo(msg):
+        if not msg.photo:
             raise RuntimeError('Message does not contain a photo')
 
-        # Fix: Correctly extract the largest available photo file_id
         file_id = msg.photo[-1].file_id
         file_info = self.telegram_bot_client.get_file(file_id)
         data = self.telegram_bot_client.download_file(file_info.file_path)
@@ -63,15 +59,22 @@ class ObjectDetectionBot:
 
     def send_photo(self, chat_id, img_path):
         if not os.path.exists(img_path):
-            raise RuntimeError("Image path doesn't exist")
+            logger.error(f"Image path does not exist: {img_path}")
+            return
 
         with open(img_path, 'rb') as img:
             self.telegram_bot_client.send_photo(chat_id, img)
 
     def upload_to_s3(self, file_path):
-        s3_key = os.path.basename(file_path)
-        self.s3_client.upload_file(file_path, self.s3_bucket_name, s3_key)
-        return f'https://{self.s3_bucket_name}.s3.amazonaws.com/{s3_key}'
+        try:
+            s3_key = os.path.basename(file_path)
+            self.s3_client.upload_file(file_path, self.s3_bucket_name, s3_key)
+            s3_url = f'https://{self.s3_bucket_name}.s3.amazonaws.com/{s3_key}'
+            logger.info(f"Uploaded to S3: {s3_url}")
+            return s3_url
+        except Exception as e:
+            logger.error(f"Failed to upload {file_path} to S3. Error: {e}")
+            return None
 
     def get_yolo5_results(self, img_name):
         try:
@@ -85,10 +88,10 @@ class ObjectDetectionBot:
 
     def handle_message(self, msg):
         try:
-            hardcoded_chat_id = 342158386
-            logger.info(f'Using hardcoded chat ID: {hardcoded_chat_id}')
+            hardcoded_chat_id = msg.chat.id  # Use actual chat ID instead of hardcoded one
+            logger.info(f"Handling message from chat ID: {hardcoded_chat_id}")
 
-            if self.is_current_msg_photo(msg):
+            if msg.photo:
                 try:
                     logger.info('Downloading user photo...')
                     photo_path = self.download_user_photo(msg)
@@ -96,6 +99,10 @@ class ObjectDetectionBot:
 
                     logger.info('Uploading to S3...')
                     image_url = self.upload_to_s3(photo_path)
+                    if not image_url:
+                        self.send_text(hardcoded_chat_id, "Failed to upload image to S3.")
+                        return
+
                     self.send_text(hardcoded_chat_id, f"Image uploaded: {image_url}")
 
                     logger.info('Sending to YOLOv5...')
@@ -117,9 +124,7 @@ class ObjectDetectionBot:
                     error_message = f"Error processing the image: {str(e)}"
                     self.send_text(hardcoded_chat_id, error_message)
             else:
-                try:
-                    self.send_text(hardcoded_chat_id, "Please send a photo.")
-                except telebot.apihelper.ApiTelegramException as e:
-                    logger.error(f"Failed to send message: {e}")
+                self.send_text(hardcoded_chat_id, "Please send a photo.")
+
         except Exception as e:
             logger.error(f"Error handling message: {e}")
