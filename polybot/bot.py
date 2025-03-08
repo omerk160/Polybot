@@ -65,7 +65,8 @@ class ObjectDetectionBot:
     with open(file_path, 'wb') as f:
         f.write(response.content)
 
-    return file_path
+    return file_path  # This return statement is correctly indented
+
 
 
 
