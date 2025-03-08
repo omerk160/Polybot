@@ -11,10 +11,12 @@ class ObjectDetectionBot:
     def __init__(self, token, telegram_app_url, s3_bucket_name):
         self.telegram_bot_client = telebot.TeleBot(token)
         self.s3_bucket_name = s3_bucket_name
-        self.s3_client = boto3.client('s3',
-                                      aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
-                                      aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
-                                      region_name='eu-north-1')
+        self.s3_client = boto3.client(
+            's3',
+            aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+            aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
+            region_name='eu-north-1'
+        )
 
         if not telegram_app_url:
             raise ValueError("TELEGRAM_APP_URL is missing")
@@ -37,52 +39,65 @@ class ObjectDetectionBot:
         except Exception as e:
             logger.error(f"Unknown error occurred while sending message to chat {chat_id}. Error: {e}")
 
-
     def send_text_with_quote(self, chat_id, text, quoted_msg_id):
-        self.telegram_bot_client.send_message(chat_id, text, reply_to_message_id=quoted_msg_id)
+        try:
+            self.telegram_bot_client.send_message(chat_id, text, reply_to_message_id=quoted_msg_id)
+        except telebot.apihelper.ApiTelegramException as e:
+            logger.error(f"Failed to send quoted message to chat {chat_id}. Error: {e}")
 
     def is_current_msg_photo(self, msg):
         return hasattr(msg, 'photo')
 
     def download_user_photo(self, msg):
-        if 'photo' not in msg:
-            raise RuntimeError('Message does not contain a photo')
+        """ Downloads the latest photo from a user's message """
+        try:
+            if not msg.photo:
+                raise RuntimeError("Message does not contain a photo")
 
-    file_id = msg['photo'][-1].file_id  # Use the highest resolution photo
-    file_info = self.telegram_bot_client.get_file(file_id)
-    file_path = file_info.file_path
+            file_info = self.telegram_bot_client.get_file(msg.photo[-1].file_id)
+            data = self.telegram_bot_client.download_file(file_info.file_path)
 
-    # Download the photo
-    url = f"https://api.telegram.org/file/bot{self.telegram_token}/{file_path}"
-    response = requests.get(url)
+            folder_name = 'photos'
+            os.makedirs(folder_name, exist_ok=True)
 
-    folder_name = 'photos'
-    os.makedirs(folder_name, exist_ok=True)
+            file_path = os.path.join(folder_name, os.path.basename(file_info.file_path))
+            with open(file_path, 'wb') as photo:
+                photo.write(data)
 
-    file_name = os.path.basename(file_path)
-    file_path = os.path.join(folder_name, file_name)
-
-    with open(file_path, 'wb') as f:
-        f.write(response.content)
-
-    return file_path  # This return statement is correctly indented
-
-
-
+            logger.info(f"Photo saved at {file_path}")
+            return file_path
+        except Exception as e:
+            logger.error(f"Failed to download photo: {e}")
+            raise
 
     def send_photo(self, chat_id, img_path):
-        if not os.path.exists(img_path):
-            raise RuntimeError("Image path doesn't exist")
+        """ Sends a photo to a Telegram chat """
+        try:
+            if not os.path.exists(img_path):
+                raise RuntimeError(f"Image path does not exist: {img_path}")
 
-        with open(img_path, 'rb') as img:
-            self.telegram_bot_client.send_photo(chat_id, img)
+            with open(img_path, 'rb') as img:
+                self.telegram_bot_client.send_photo(chat_id, img)
+                logger.info(f"Photo sent successfully to chat {chat_id}")
+        except telebot.apihelper.ApiTelegramException as e:
+            logger.error(f"Failed to send photo to chat {chat_id}. Error: {e}")
+        except Exception as e:
+            logger.error(f"Error sending photo to chat {chat_id}. Error: {e}")
 
     def upload_to_s3(self, file_path):
-        s3_key = os.path.basename(file_path)
-        self.s3_client.upload_file(file_path, self.s3_bucket_name, s3_key)
-        return f'https://{self.s3_bucket_name}.s3.amazonaws.com/{s3_key}'
+        """ Uploads an image to S3 and returns the URL """
+        try:
+            s3_key = os.path.basename(file_path)
+            self.s3_client.upload_file(file_path, self.s3_bucket_name, s3_key)
+            image_url = f"https://{self.s3_bucket_name}.s3.amazonaws.com/{s3_key}"
+            logger.info(f"Uploaded {file_path} to S3: {image_url}")
+            return image_url
+        except Exception as e:
+            logger.error(f"Failed to upload {file_path} to S3. Error: {e}")
+            raise
 
     def get_yolo5_results(self, img_name):
+        """ Sends the image name to YOLOv5 for object detection """
         try:
             logger.info(f'Sending imgName to YOLOv5: {img_name}')
             response = requests.post("http://yolov5-service:8081/predict", json={"imgName": img_name})
@@ -93,19 +108,19 @@ class ObjectDetectionBot:
             return None
 
     def handle_message(self, msg):
+        """ Handles incoming Telegram messages """
         try:
-            hardcoded_chat_id = 342158386
-            logger.info(f'Using hardcoded chat ID: {hardcoded_chat_id}')
+            chat_id = msg.chat.id
+            logger.info(f'Received message from chat ID: {chat_id}')
 
-            if 'photo' in msg:
+            if msg.photo:
                 try:
                     logger.info('Downloading user photo...')
                     photo_path = self.download_user_photo(msg)
-                    logger.info(f'Photo saved at {photo_path}')
 
                     logger.info('Uploading to S3...')
                     image_url = self.upload_to_s3(photo_path)
-                    self.send_text(hardcoded_chat_id, f"Image uploaded: {image_url}")
+                    self.send_text(chat_id, f"Image uploaded: {image_url}")
 
                     logger.info('Sending to YOLOv5...')
                     img_name = os.path.basename(photo_path)
@@ -117,16 +132,13 @@ class ObjectDetectionBot:
                     else:
                         results_text = "Error processing the image."
 
-                    self.send_text(hardcoded_chat_id, results_text)
+                    self.send_text(chat_id, results_text)
 
                 except Exception as e:
                     logger.error(f"Processing error: {e}")
-                    error_message = f"Error processing the image: {str(e)}"
-                    self.send_text(hardcoded_chat_id, error_message)
+                    self.send_text(chat_id, f"Error processing the image: {str(e)}")
             else:
-                try:
-                    self.send_text(hardcoded_chat_id, "Please send a photo.")
-                except telebot.apihelper.ApiTelegramException as e:
-                    logger.error(f"Failed to send message: {e}")
+                self.send_text(chat_id, "Please send a photo.")
+
         except Exception as e:
             logger.error(f"Error handling message: {e}")
