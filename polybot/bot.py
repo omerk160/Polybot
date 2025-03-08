@@ -85,11 +85,7 @@ class ObjectDetectionBot:
     def handle_message(self, msg):
         try:
             logger.info(f'Incoming message from chat ID: {msg["chat"]["id"]}')
-            if "chat" in msg and "id" in msg["chat"]:
-              chat_id = msg["chat"]["id"]
-            else:
-              logger.error("Message does not contain a valid chat ID")
-              return
+
             if self.is_current_msg_photo(msg):
                 try:
                     logger.info('Downloading user photo...')
@@ -114,21 +110,21 @@ class ObjectDetectionBot:
 
                 except Exception as e:
                     logger.error(f"Processing error: {e}")
-                    self.send_text(msg["chat"]["id"], "Error processing the image.")
+                    try:
+                        self.send_text(msg["chat"]["id"], "Error processing the image.")
+                    except telebot.apihelper.ApiTelegramException as e:
+                        logger.error(f"Failed to send error message: {e}")
             else:
-                self.send_text(msg["chat"]["id"], "Please send a photo.")
+                try:
+                    self.send_text(msg["chat"]["id"], "Please send a photo.")
+                except telebot.apihelper.ApiTelegramException as e:
+                    logger.error(f"Failed to send message: {e}")
         except telebot.apihelper.ApiTelegramException as e:
             logger.error(f"Telegram API error: {e}")
-            # Handle the error by sending a generic error message or logging it
-            try:
-                self.send_text(msg["chat"]["id"], "An error occurred while processing your message.")
-            except telebot.apihelper.ApiTelegramException as e:
-                logger.error(f"Failed to send error message: {e}")
+            # Handle the error by logging it
+            logger.error(f"Failed to handle message: {e}")
         except Exception as e:
             logger.error(f"Error handling message: {e}")
-            # Handle the error by sending a generic error message or logging it
-            try:
-                self.send_text(msg["chat"]["id"], "An error occurred while processing your message.")
-            except telebot.apihelper.ApiTelegramException as e:
-                logger.error(f"Failed to send error message: {e}")
+            # Handle the error by logging it
+            logger.error(f"Failed to handle message: {e}")
 
