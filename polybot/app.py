@@ -34,7 +34,7 @@ TELEGRAM_APP_URL = os.environ["TELEGRAM_APP_URL"]
 s3_client = boto3.client('s3')  # Create S3 client
 
 # --- Bot Initialization ---
-bot = ObjectDetectionBot(TELEGRAM_TOKEN, TELEGRAM_APP_URL, S3_BUCKET_NAME, s3_client) # create bot instance
+bot = ObjectDetectionBot(TELEGRAM_TOKEN, TELEGRAM_APP_URL, S3_BUCKET_NAME) # create bot instance
 
 
 # --- Define Routes ---
