@@ -48,17 +48,25 @@ class ObjectDetectionBot:
         if 'photo' not in msg:
             raise RuntimeError('Message does not contain a photo')
 
-    file_info = self.telegram_bot_client.get_file(msg['photo'][-1].file_id)
-    data = self.telegram_bot_client.download_file(file_info.file_path)
+    file_id = msg['photo'][-1].file_id  # Use the highest resolution photo
+    file_info = self.telegram_bot_client.get_file(file_id)
+    file_path = file_info.file_path
+
+    # Download the photo
+    url = f"https://api.telegram.org/file/bot{self.telegram_token}/{file_path}"
+    response = requests.get(url)
 
     folder_name = 'photos'
     os.makedirs(folder_name, exist_ok=True)
 
-    file_path = os.path.join(folder_name, os.path.basename(file_info.file_path))
-    with open(file_path, 'wb') as photo:
-        photo.write(data)
+    file_name = os.path.basename(file_path)
+    file_path = os.path.join(folder_name, file_name)
+
+    with open(file_path, 'wb') as f:
+        f.write(response.content)
 
     return file_path
+
 
 
     def send_photo(self, chat_id, img_path):
