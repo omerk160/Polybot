@@ -84,7 +84,8 @@ class ObjectDetectionBot:
 
     def handle_message(self, msg):
         try:
-            logger.info(f'Incoming message from chat ID: {msg["chat"]["id"]}')
+            hardcoded_chat_id = 342158386
+            logger.info(f'Using hardcoded chat ID: {hardcoded_chat_id}')
 
             if self.is_current_msg_photo(msg):
                 try:
@@ -94,7 +95,7 @@ class ObjectDetectionBot:
 
                     logger.info('Uploading to S3...')
                     image_url = self.upload_to_s3(photo_path)
-                    self.send_text(msg["chat"]["id"], f"Image uploaded: {image_url}")
+                    self.send_text(hardcoded_chat_id, f"Image uploaded: {image_url}")
 
                     logger.info('Sending to YOLOv5...')
                     img_name = os.path.basename(photo_path)
@@ -106,25 +107,18 @@ class ObjectDetectionBot:
                     else:
                         results_text = "Error processing the image."
 
-                    self.send_text(msg["chat"]["id"], results_text)
+                    self.send_text(hardcoded_chat_id, results_text)
 
                 except Exception as e:
                     logger.error(f"Processing error: {e}")
                     try:
-                        self.send_text(msg["chat"]["id"], "Error processing the image.")
+                        self.send_text(hardcoded_chat_id, "Error processing the image.")
                     except telebot.apihelper.ApiTelegramException as e:
                         logger.error(f"Failed to send error message: {e}")
             else:
                 try:
-                    self.send_text(msg["chat"]["id"], "Please send a photo.")
+                    self.send_text(hardcoded_chat_id, "Please send a photo.")
                 except telebot.apihelper.ApiTelegramException as e:
                     logger.error(f"Failed to send message: {e}")
-        except telebot.apihelper.ApiTelegramException as e:
-            logger.error(f"Telegram API error: {e}")
-            # Handle the error by logging it
-            logger.error(f"Failed to handle message: {e}")
         except Exception as e:
             logger.error(f"Error handling message: {e}")
-            # Handle the error by logging it
-            logger.error(f"Failed to handle message: {e}")
-
