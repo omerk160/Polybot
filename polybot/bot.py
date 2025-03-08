@@ -5,23 +5,28 @@ import time
 import requests
 from telebot.types import InputFile
 import boto3
-
+from botocore.exceptions import BotoCoreError, NoCredentialsError
 
 class ObjectDetectionBot:
     def __init__(self, token, telegram_app_url, s3_bucket_name):
         self.telegram_bot_client = telebot.TeleBot(token)
         self.s3_bucket_name = s3_bucket_name
-        self.s3_client = boto3.client(
-            's3',
-            aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
-            aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
-            region_name='eu-north-1'
-        )
+
+        # Use AWS default credential chain instead of hardcoded env vars
+        try:
+            self.s3_client = boto3.client('s3', region_name='eu-north-1')
+        except (BotoCoreError, NoCredentialsError) as e:
+            logger.error(f"Failed to initialize S3 client: {e}")
+            raise
 
         if not telegram_app_url:
             raise ValueError("TELEGRAM_APP_URL is missing")
 
         # Remove old webhooks and set the new one
+        self.set_webhook(telegram_app_url, token)
+
+    def set_webhook(self, telegram_app_url, token):
+        """ Sets the Telegram bot webhook """
         try:
             self.telegram_bot_client.remove_webhook()
             time.sleep(0.5)
@@ -32,6 +37,7 @@ class ObjectDetectionBot:
             logger.error(f"Failed to set webhook: {e}")
 
     def send_text(self, chat_id, text):
+        """ Sends a text message to the Telegram chat """
         try:
             self.telegram_bot_client.send_message(chat_id, text)
         except telebot.apihelper.ApiTelegramException as e:
@@ -40,16 +46,14 @@ class ObjectDetectionBot:
             logger.error(f"Unknown error occurred while sending message to chat {chat_id}. Error: {e}")
 
     def send_text_with_quote(self, chat_id, text, quoted_msg_id):
+        """ Sends a text message in reply to another message """
         try:
             self.telegram_bot_client.send_message(chat_id, text, reply_to_message_id=quoted_msg_id)
         except telebot.apihelper.ApiTelegramException as e:
             logger.error(f"Failed to send quoted message to chat {chat_id}. Error: {e}")
 
-    def is_current_msg_photo(self, msg):
-        return hasattr(msg, 'photo')
-
     def download_user_photo(self, msg):
-        """ Downloads the latest photo from a user's message """
+        """ Downloads the latest photo from a user's message and saves it locally """
         try:
             if not msg.photo:
                 raise RuntimeError("Message does not contain a photo")
@@ -60,7 +64,9 @@ class ObjectDetectionBot:
             folder_name = 'photos'
             os.makedirs(folder_name, exist_ok=True)
 
-            file_path = os.path.join(folder_name, os.path.basename(file_info.file_path))
+            file_name = f"{int(time.time())}_{os.path.basename(file_info.file_path)}"  # Unique file names
+            file_path = os.path.join(folder_name, file_name)
+
             with open(file_path, 'wb') as photo:
                 photo.write(data)
 
@@ -92,6 +98,9 @@ class ObjectDetectionBot:
             image_url = f"https://{self.s3_bucket_name}.s3.amazonaws.com/{s3_key}"
             logger.info(f"Uploaded {file_path} to S3: {image_url}")
             return image_url
+        except (BotoCoreError, NoCredentialsError) as e:
+            logger.error(f"Failed to upload {file_path} to S3. AWS credentials error: {e}")
+            raise
         except Exception as e:
             logger.error(f"Failed to upload {file_path} to S3. Error: {e}")
             raise
