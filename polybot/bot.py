@@ -78,10 +78,8 @@ class ObjectDetectionBot:
 
     def handle_message(self, msg):
         try:
-            # Log the incoming message using dictionary keys
-            logger.info(f'Incoming message from {msg["chat"]["id"]}')
+            logger.info(f'Incoming message from chat ID: {msg["chat"]["id"]}')
 
-            # Check if the message contains a photo
             if self.is_current_msg_photo(msg):
                 try:
                     logger.info('Downloading user photo...')
@@ -111,6 +109,8 @@ class ObjectDetectionBot:
                 self.send_text(msg["chat"]["id"], "Please send a photo.")
         except Exception as e:
             logger.error(f"Error handling message: {e}")
+            # Handle the error by sending a generic error message or logging it
+            self.send_text(msg["chat"]["id"], "An error occurred while processing your message.")
 
 
 
