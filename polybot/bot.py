@@ -7,28 +7,25 @@ from telebot.types import InputFile
 import boto3
 
 class ObjectDetectionBot:
-    def __init__(self, token, telegram_chat_url, s3_bucket_name, s3_client):
+    def __init__(self, token, telegram_app_url, s3_bucket_name):
         self.telegram_bot_client = telebot.TeleBot(token)
         self.s3_bucket_name = s3_bucket_name
-        self.s3_client = s3_client
-
-        # Use the existing S3 client from environment variables
-        self.s3_client = boto3.client('s3', aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+        self.s3_client = boto3.client('s3',
+                                      aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
                                       aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
                                       region_name='eu-north-1')
 
-        # Get the Telegram App URL from environment variables
-        ngrok_url = os.getenv('TELEGRAM_APP_URL')
-
-        if not ngrok_url:
+        if not telegram_app_url:
             raise ValueError("TELEGRAM_APP_URL is missing")
 
-        # Remove any existing webhooks and set a new webhook URL
-        self.telegram_bot_client.remove_webhook()
-        time.sleep(0.5)
-        self.telegram_bot_client.set_webhook(url=f'{ngrok_url}/{token}/', timeout=60)
-
-        logger.info(f'Telegram Bot information\n\n{self.telegram_bot_client.get_me()}')
+        # Remove old webhooks and set the new one
+        try:
+            self.telegram_bot_client.remove_webhook()
+            time.sleep(0.5)
+            self.telegram_bot_client.set_webhook(url=f'{telegram_app_url}/{token}/', timeout=60)
+            logger.info(f'Webhook set: {telegram_app_url}/{token}/')
+        except Exception as e:
+            logger.error(f"Failed to set webhook: {e}")
 
     def send_text(self, chat_id, text):
         self.telegram_bot_client.send_message(chat_id, text)
@@ -37,20 +34,19 @@ class ObjectDetectionBot:
         self.telegram_bot_client.send_message(chat_id, text, reply_to_message_id=quoted_msg_id)
 
     def is_current_msg_photo(self, msg):
-        return 'photo' in msg
+        return hasattr(msg, 'photo')
 
     def download_user_photo(self, msg):
         if not self.is_current_msg_photo(msg):
-            raise RuntimeError(f'Message content of type "photo" expected')
+            raise RuntimeError('Message does not contain a photo')
 
-        file_info = self.telegram_bot_client.get_file(msg['photo'][-1]['file_id'])
+        file_info = self.telegram_bot_client.get_file(msg.photo[-1].file_id)
         data = self.telegram_bot_client.download_file(file_info.file_path)
+
         folder_name = 'photos'
+        os.makedirs(folder_name, exist_ok=True)
 
-        if not os.path.exists(folder_name):
-            os.makedirs(folder_name)
-
-        file_path = os.path.join(folder_name, file_info.file_path.split('/')[-1])
+        file_path = os.path.join(folder_name, os.path.basename(file_info.file_path))
         with open(file_path, 'wb') as photo:
             photo.write(data)
 
@@ -60,81 +56,61 @@ class ObjectDetectionBot:
         if not os.path.exists(img_path):
             raise RuntimeError("Image path doesn't exist")
 
-        self.telegram_bot_client.send_photo(chat_id, InputFile(img_path))
+        with open(img_path, 'rb') as img:
+            self.telegram_bot_client.send_photo(chat_id, img)
 
     def upload_to_s3(self, file_path):
         s3_key = os.path.basename(file_path)
         self.s3_client.upload_file(file_path, self.s3_bucket_name, s3_key)
-        s3_url = f'https://{self.s3_bucket_name}.s3.amazonaws.com/{s3_key}'
-        return s3_url
+        return f'https://{self.s3_bucket_name}.s3.amazonaws.com/{s3_key}'
 
     def get_yolo5_results(self, img_name):
         try:
-            logger.info(f'Sending imgName to YOLOv5 service: {img_name}')
-            logger.debug(f'Preparing to send POST request to http://yolov5-service:8081/predict with payload: {{"imgName": "{img_name}"}}')
-            response = requests.post(
-                "http://yolov5-service:8081/predict",
-                json={"imgName": img_name}
-            )
-            logger.debug(f'Response status code from YOLOv5 service: {response.status_code}')
+            logger.info(f'Sending imgName to YOLOv5: {img_name}')
+            response = requests.post("http://yolov5-service:8081/predict", json={"imgName": img_name})
             response.raise_for_status()
-            logger.info(f'Received response from YOLOv5 service: {response.json()}')
             return response.json()
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error contacting YOLOv5 microservice: {e}")
-            logger.debug(f'Error details: {e.__class__} - {str(e)}')
+            logger.error(f"YOLOv5 service error: {e}")
             return None
 
     def handle_message(self, msg):
-        logger.info(f'Incoming message: {msg}')
-        chat_id = msg['chat']['id']
+        logger.info(f'Incoming message from {msg.chat.id}')
 
         if self.is_current_msg_photo(msg):
             try:
-                logger.info('Step 1: Downloading user photo')
+                logger.info('Downloading user photo...')
                 photo_path = self.download_user_photo(msg)
-                logger.info(f'Photo downloaded to: {photo_path}')
+                logger.info(f'Photo saved at {photo_path}')
 
-                logger.info('Step 2: Uploading photo to S3')
+                logger.info('Uploading to S3...')
                 image_url = self.upload_to_s3(photo_path)
-                logger.info(f'Photo uploaded to S3: {image_url}')
-                self.send_text(chat_id, "Image uploaded to S3. Processing...")
+                self.send_text(msg.chat.id, f"Image uploaded: {image_url}")
 
+                logger.info('Sending to YOLOv5...')
                 img_name = os.path.basename(photo_path)
-                logger.info(f'Image name for YOLOv5: {img_name}')
-
-                logger.info('Step 4: Sending image to YOLOv5 service')
                 yolo_results = self.get_yolo5_results(img_name)
-                logger.info(f'YOLOv5 results: {yolo_results}')
 
-                if yolo_results:
-                    logger.info('Step 5: Sending prediction results to user')
-                    if 'predictions' in yolo_results and yolo_results['predictions']:
-                        detected_objects = [label['class'] for label in yolo_results['predictions']]
-                        if detected_objects:
-                            results_text = f"Detected objects: {', '.join(detected_objects)}"
-                        else:
-                            results_text = "No objects detected."
-                        self.send_text(chat_id, results_text)
-                    else:
-                        logger.error('YOLOv5 service returned no predictions')
-                        self.send_text(chat_id, "There was an error processing the image.")
+                if yolo_results and 'predictions' in yolo_results:
+                    detected_objects = [obj['class'] for obj in yolo_results['predictions']]
+                    results_text = f"Detected: {', '.join(detected_objects)}" if detected_objects else "No objects detected."
                 else:
-                    logger.error('YOLOv5 service returned no results or incorrect response format')
-                    self.send_text(chat_id, "There was an error processing the image.")
-            except Exception as e:
-                logger.error(f"Error processing image: {e}")
-                self.send_text(chat_id, "There was an error processing the image.")
-        else:
-            logger.info('Message does not contain a photo')
-            self.send_text(chat_id, "Please send a photo with a valid caption.")
+                    results_text = "Error processing the image."
 
-# Initialize the bot with environment variables
+                self.send_text(msg.chat.id, results_text)
+
+            except Exception as e:
+                logger.error(f"Processing error: {e}")
+                self.send_text(msg.chat.id, "Error processing the image.")
+        else:
+            self.send_text(msg.chat.id, "Please send a photo.")
+
+# Initialize the bot
 TELEGRAM_TOKEN = os.environ['TELEGRAM_TOKEN']
 TELEGRAM_APP_URL = os.environ['TELEGRAM_APP_URL']
 S3_BUCKET_NAME = os.environ['S3_BUCKET_NAME']
 
-bot = ObjectDetectionBot(TELEGRAM_TOKEN, TELEGRAM_APP_URL, S3_BUCKET_NAME, None)
+bot = ObjectDetectionBot(TELEGRAM_TOKEN, TELEGRAM_APP_URL, S3_BUCKET_NAME)
 
-# Start the bot
+# Start polling
 bot.telegram_bot_client.polling()
