@@ -48,6 +48,7 @@ def delete_webhook():
 
 # Function to set the new webhook URL
 def set_webhook():
+    delete_webhook()  # Delete the existing webhook first
     webhook_url = f"{TELEGRAM_APP_URL}/{TELEGRAM_TOKEN}"
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook?url={webhook_url}"
     response = requests.get(url)
@@ -63,7 +64,7 @@ def index():  # index function, will return "ok" for a healthy service
 
 # Delete existing webhook and set a new one at app startup
 logger.info(f"Deleting existing webhook (if any) and setting new webhook URL.")
-delete_webhook()  # Delete the existing webhook first
+
 set_webhook()  # Set the new webhook after deletion
 
 # Now you can define the route that handles the webhook requests
