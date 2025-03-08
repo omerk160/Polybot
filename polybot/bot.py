@@ -30,7 +30,13 @@ class ObjectDetectionBot:
             logger.error(f"Failed to set webhook: {e}")
 
     def send_text(self, chat_id, text):
-        self.telegram_bot_client.send_message(chat_id, text)
+        try:
+            self.telegram_bot_client.send_message(chat_id, text)
+        except telebot.apihelper.ApiTelegramException as e:
+            logger.error(f"Failed to send message to chat {chat_id}. Error: {e}")
+        except Exception as e:
+            logger.error(f"Unknown error occurred while sending message to chat {chat_id}. Error: {e}")
+
 
     def send_text_with_quote(self, chat_id, text, quoted_msg_id):
         self.telegram_bot_client.send_message(chat_id, text, reply_to_message_id=quoted_msg_id)
@@ -79,7 +85,11 @@ class ObjectDetectionBot:
     def handle_message(self, msg):
         try:
             logger.info(f'Incoming message from chat ID: {msg["chat"]["id"]}')
-
+            if "chat" in msg and "id" in msg["chat"]:
+              chat_id = msg["chat"]["id"]
+            else:
+              logger.error("Message does not contain a valid chat ID")
+              return
             if self.is_current_msg_photo(msg):
                 try:
                     logger.info('Downloading user photo...')
