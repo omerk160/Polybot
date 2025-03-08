@@ -46,18 +46,27 @@ def delete_webhook():
     else:
         logger.error(f"Failed to delete webhook. Response: {response.text}")
 
+# Function to set the new webhook URL
+def set_webhook():
+    webhook_url = f"{TELEGRAM_APP_URL}/{TELEGRAM_TOKEN}"
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook?url={webhook_url}"
+    response = requests.get(url)
+    if response.status_code == 200:
+        logger.info(f"Webhook set successfully: {webhook_url}")
+    else:
+        logger.error(f"Failed to set webhook. Response: {response.text}")
+
 # --- Define Routes ---
 @app.route('/', methods=['GET'])  # Define index page
 def index():  # index function, will return "ok" for a healthy service
     return 'Ok'
 
-# Setting webhook URL
-webhook_url = f"{TELEGRAM_APP_URL}/{TELEGRAM_TOKEN}"
-
-logger.info(f"Deleting existing webhook (if any) and setting new webhook URL: {webhook_url}")
+# Delete existing webhook and set a new one at app startup
+logger.info(f"Deleting existing webhook (if any) and setting new webhook URL.")
 delete_webhook()  # Delete the existing webhook first
+set_webhook()  # Set the new webhook after deletion
 
-# Now you can set the new webhook URL after deleting the old one
+# Now you can define the route that handles the webhook requests
 @app.route(f'/{TELEGRAM_TOKEN}/', methods=['POST'])  # Define Telegram Webhook endpoint using the bot token
 def webhook():  # Create method to handle webhook requests
     req = request.get_json()  # Get the request body as JSON
