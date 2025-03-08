@@ -6,6 +6,7 @@ import requests
 from telebot.types import InputFile
 import boto3
 
+
 class ObjectDetectionBot:
     def __init__(self, token, telegram_app_url, s3_bucket_name):
         self.telegram_bot_client = telebot.TeleBot(token)
@@ -22,8 +23,9 @@ class ObjectDetectionBot:
         try:
             self.telegram_bot_client.remove_webhook()
             time.sleep(0.5)
-            self.telegram_bot_client.set_webhook(url=f'{telegram_app_url}/{token}/', timeout=60)
-            logger.info(f'Webhook set: {telegram_app_url}/{token}/')
+            webhook_url = f'{telegram_app_url}/{token}/'
+            self.telegram_bot_client.set_webhook(url=webhook_url, timeout=60)
+            logger.info(f'Webhook set: {webhook_url}')
         except Exception as e:
             logger.error(f"Failed to set webhook: {e}")
 
@@ -105,12 +107,17 @@ class ObjectDetectionBot:
         else:
             self.send_text(msg.chat.id, "Please send a photo.")
 
-# Initialize the bot
-TELEGRAM_TOKEN = os.environ['TELEGRAM_TOKEN']
-TELEGRAM_APP_URL = os.environ['TELEGRAM_APP_URL']
-S3_BUCKET_NAME = os.environ['S3_BUCKET_NAME']
 
-bot = ObjectDetectionBot(TELEGRAM_TOKEN, TELEGRAM_APP_URL, S3_BUCKET_NAME)
+if __name__ == "__main__":
+    TELEGRAM_TOKEN = os.environ['TELEGRAM_TOKEN']
+    TELEGRAM_APP_URL = os.environ['TELEGRAM_APP_URL']
+    S3_BUCKET_NAME = os.environ['S3_BUCKET_NAME']
 
-# Start polling
-bot.telegram_bot_client.polling()
+    bot = ObjectDetectionBot(TELEGRAM_TOKEN, TELEGRAM_APP_URL, S3_BUCKET_NAME)
+
+    # Run polling only if no webhook is set
+    if not TELEGRAM_APP_URL:
+        logger.info("Starting bot in polling mode...")
+        bot.telegram_bot_client.polling(none_stop=True, timeout=60)
+    else:
+        logger.info("Bot is running in webhook mode.")
