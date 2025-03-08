@@ -5,6 +5,8 @@ import time
 import requests
 from telebot.types import InputFile
 import boto3
+import telebot.types
+
 
 
 class ObjectDetectionBot:
@@ -88,8 +90,12 @@ class ObjectDetectionBot:
 
     def handle_message(self, msg):
         try:
-            hardcoded_chat_id = msg.chat.id  # Use actual chat ID instead of hardcoded one
-            logger.info(f"Handling message from chat ID: {hardcoded_chat_id}")
+            # Convert dictionary to a Message object
+            if isinstance(msg, dict):
+                msg = telebot.types.Message.de_json(msg)
+
+            chat_id = msg.chat.id  # Now this will work correctly
+            logger.info(f"Handling message from chat ID: {chat_id}")
 
             if msg.photo:
                 try:
@@ -100,10 +106,10 @@ class ObjectDetectionBot:
                     logger.info('Uploading to S3...')
                     image_url = self.upload_to_s3(photo_path)
                     if not image_url:
-                        self.send_text(hardcoded_chat_id, "Failed to upload image to S3.")
+                        self.send_text(chat_id, "Failed to upload image to S3.")
                         return
 
-                    self.send_text(hardcoded_chat_id, f"Image uploaded: {image_url}")
+                    self.send_text(chat_id, f"Image uploaded: {image_url}")
 
                     logger.info('Sending to YOLOv5...')
                     img_name = os.path.basename(photo_path)
@@ -117,14 +123,13 @@ class ObjectDetectionBot:
                     else:
                         results_text = "No predictions found."
 
-                    self.send_text(hardcoded_chat_id, results_text)
+                    self.send_text(chat_id, results_text)
 
                 except Exception as e:
                     logger.error(f"Processing error: {e}")
-                    error_message = f"Error processing the image: {str(e)}"
-                    self.send_text(hardcoded_chat_id, error_message)
+                    self.send_text(chat_id, f"Error processing the image: {str(e)}")
             else:
-                self.send_text(hardcoded_chat_id, "Please send a photo.")
+                self.send_text(chat_id, "Please send a photo.")
 
         except Exception as e:
             logger.error(f"Error handling message: {e}")
