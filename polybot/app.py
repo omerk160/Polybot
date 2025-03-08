@@ -6,6 +6,7 @@ from bot import ObjectDetectionBot  # Import custom bot class
 import logging  # Import logging module
 import json
 import requests  # Import requests to make HTTP requests
+import time  # Import time module for retry logic
 
 logging.basicConfig(level=logging.INFO)  # Set logging level
 logger = logging.getLogger(__name__)  # Create the logger
@@ -62,11 +63,6 @@ def check_webhook_status():
         logger.error(f"Failed to get webhook info. Response: {response.text}")
         return False
 
-# Usage
-if not check_webhook_status():
-    set_webhook()
-
-
 # Function to set the new webhook URL
 def set_webhook():
     delete_webhook()  # Delete the existing webhook first
@@ -99,7 +95,8 @@ def index():  # index function, will return "ok" for a healthy service
 # Delete existing webhook and set a new one at app startup
 logger.info(f"Deleting existing webhook (if any) and setting new webhook URL.")
 
-set_webhook()  # Set the new webhook after deletion
+if not check_webhook_status():
+    set_webhook()  # Set the new webhook after deletion
 
 # Now you can define the route that handles the webhook requests
 @app.route(f'/{TELEGRAM_TOKEN}/', methods=['POST'])  # Define Telegram Webhook endpoint using the bot token
