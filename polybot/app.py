@@ -51,5 +51,5 @@ def webhook():  # Create method to handle webhook requests
 
 # --- Main Execution ---
 if __name__ == "__main__":  # Check if script is run directly.
-    app.run(host="0.0.0.0", port=8443, ssl_context=("polybot.crt", "privkey.pem"))
+    app.run(host="0.0.0.0", port=30619, ssl_context=("polybot.crt", "privkey.pem"))
 
