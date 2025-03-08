@@ -87,7 +87,7 @@ class ObjectDetectionBot:
             hardcoded_chat_id = 342158386
             logger.info(f'Using hardcoded chat ID: {hardcoded_chat_id}')
 
-            if self.is_current_msg_photo(msg):
+            if 'photo' in msg:
                 try:
                     logger.info('Downloading user photo...')
                     photo_path = self.download_user_photo(msg)
