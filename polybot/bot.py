@@ -41,13 +41,15 @@ class ObjectDetectionBot:
         self.telegram_bot_client.send_message(chat_id, text, reply_to_message_id=quoted_msg_id)
 
     def is_current_msg_photo(self, msg):
-        return 'photo' in msg
+        return hasattr(msg, 'photo') and bool(msg.photo)  # Fix: Check if 'photo' exists and is not empty
 
     def download_user_photo(self, msg):
-        if 'photo' not in msg:
+        if not self.is_current_msg_photo(msg):
             raise RuntimeError('Message does not contain a photo')
 
-        file_info = self.telegram_bot_client.get_file(msg['photo'][-1].file_id)
+        # Fix: Correctly extract the largest available photo file_id
+        file_id = msg.photo[-1].file_id
+        file_info = self.telegram_bot_client.get_file(file_id)
         data = self.telegram_bot_client.download_file(file_info.file_path)
 
         folder_name = 'photos'
@@ -86,7 +88,7 @@ class ObjectDetectionBot:
             hardcoded_chat_id = 342158386
             logger.info(f'Using hardcoded chat ID: {hardcoded_chat_id}')
 
-            if 'photo' in msg:
+            if self.is_current_msg_photo(msg):
                 try:
                     logger.info('Downloading user photo...')
                     photo_path = self.download_user_photo(msg)
