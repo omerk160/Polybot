@@ -39,8 +39,6 @@ class ObjectDetectionBot:
         self.s3_bucket_name = s3_bucket_name
         self.s3_client = boto3.client(
             's3',
-        aws_access_key_id=self.aws_access_key_id,
-        aws_secret_access_key=self.aws_secret_access_key,
         region_name='eu-north-1'
 )
 
