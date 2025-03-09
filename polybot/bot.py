@@ -5,59 +5,75 @@ import time
 import requests
 from telebot.types import InputFile
 import boto3
-import telebot.types
-import json
 import pymongo
+import json
 
 class ObjectDetectionBot:
-    def __init__(self, token, telegram_app_url, s3_bucket_name):
+    def __init__(self, token, s3_bucket_name):
         self.telegram_bot_client = telebot.TeleBot(token)
         self.s3_bucket_name = s3_bucket_name
-        self.s3_client = boto3.client('s3',
-                                      aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
-                                      aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
-                                      region_name='eu-north-1')
+        self.s3_client = boto3.client('s3', region_name='eu-north-1')
 
         self.mongo_client = pymongo.MongoClient(os.environ['MONGO_URI'])
         self.db = self.mongo_client[os.environ['MONGO_DB']]
         self.collection = self.db[os.environ['MONGO_COLLECTION']]
 
-        if not telegram_app_url:
-            raise ValueError("TELEGRAM_APP_URL is missing")
-
+    def send_text(self, chat_id, text):
         try:
-            self.telegram_bot_client.remove_webhook()
-            time.sleep(0.5)
-            webhook_url = f'{telegram_app_url}/{token}/'
-            self.telegram_bot_client.set_webhook(url=webhook_url, timeout=60)
-            logger.info(f'Webhook set: {webhook_url}')
+            self.telegram_bot_client.send_message(chat_id, text)
+        except telebot.apihelper.ApiTelegramException as e:
+            logger.error(f"Failed to send message to chat {chat_id}. Error: {e}")
         except Exception as e:
-            logger.error(f"Failed to set webhook: {e}")
+            logger.error(f"Unknown error occurred while sending message to chat {chat_id}. Error: {e}")
 
-    def handle_results(self, prediction_id):
+    def is_current_msg_photo(self, msg):
+        return bool(msg.photo)
+
+    def download_user_photo(self, msg):
+        if not msg.photo:
+            raise RuntimeError('Message does not contain a photo')
+
+        file_id = msg.photo[-1].file_id
+        file_info = self.telegram_bot_client.get_file(file_id)
+        data = self.telegram_bot_client.download_file(file_info.file_path)
+
+        folder_name = 'photos'
+        os.makedirs(folder_name, exist_ok=True)
+
+        file_path = os.path.join(folder_name, os.path.basename(file_info.file_path))
+        with open(file_path, 'wb') as photo:
+            photo.write(data)
+
+        return file_path
+
+    def send_photo(self, chat_id, img_path):
+        if not os.path.exists(img_path):
+            logger.error(f"Image path does not exist: {img_path}")
+            return
+
+        with open(img_path, 'rb') as img:
+            self.telegram_bot_client.send_photo(chat_id, img)
+
+    def upload_to_s3(self, file_path):
         try:
-            results = self.collection.find_one({'predictionId': prediction_id})
-            if results:
-                detected_objects = results['labels']
-                return f"Detected: {', '.join([obj['class'] for obj in detected_objects])}" if detected_objects else "No objects detected."
-            else:
-                return "No predictions found."
+            s3_key = os.path.basename(file_path)
+            self.s3_client.upload_file(file_path, self.s3_bucket_name, s3_key)
+            return f'https://{self.s3_bucket_name}.s3.amazonaws.com/{s3_key}'
         except Exception as e:
-            logger.error(f"Error retrieving results: {e}")
-            return "Error processing the request."
+            logger.error(f"Failed to upload {file_path} to S3. Error: {e}")
+            return None
 
-app = Flask(__name__)
+    def send_to_sqs(self, img_name, s3_url):
+        sqs_client = boto3.client('sqs', region_name='eu-north-1')
+        try:
+            response = sqs_client.send_message(
+                QueueUrl=os.environ['SQS_QUEUE_URL'],
+                MessageBody=json.dumps({'imgName': img_name, 's3Url': s3_url}),
+                MessageGroupId='image-processing',
+            )
+            logger.info(f"Message sent to SQS: {response['MessageId']}")
+        except Exception as e:
+            logger.error(f"Failed to send message to SQS. Error: {e}")
 
-@app.route('/results', methods=['POST'])
-def handle_results():
-    try:
-        data = request.get_json()
-        prediction_id = data['predictionId']
-        result_text = bot.handle_results(prediction_id)
-        return result_text
-    except Exception as e:
-        logger.error(f"Error processing results request: {e}")
-        return "Error", 500
-
-if __name__ == "__main__":
-    app.run(debug=True)
+    def handle_message(self, msg):
+        logger.info(f"Handling message: {msg}")
