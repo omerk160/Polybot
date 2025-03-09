@@ -18,7 +18,7 @@ def get_secret(secret_name):
         return None
 
 class ObjectDetectionBot:
-    def __init__(self):
+    def __init__(self, telegram_token: str, s3_bucket_name: str):
         # Load secrets from AWS Secrets Manager
         secrets = get_secret('polybot-secrets')
         if secrets:
