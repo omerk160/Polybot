@@ -8,8 +8,6 @@ import boto3
 import telebot.types
 import json
 
-
-
 class ObjectDetectionBot:
     def __init__(self, token, telegram_app_url, s3_bucket_name):
         self.telegram_bot_client = telebot.TeleBot(token)
@@ -81,33 +79,15 @@ class ObjectDetectionBot:
 
     def send_to_sqs(self, img_name, s3_url):
         sqs_client = boto3.client('sqs', region_name='eu-north-1')
-    try:
-        response = sqs_client.send_message(
-            QueueUrl=os.environ['SQS_QUEUE_URL'],
-            MessageBody=json.dumps({'imgName': img_name, 's3Url': s3_url}),
-            MessageGroupId='image-processing',  # If using FIFO
-        )
-        logger.info(f"Message sent to SQS: {response['MessageId']}")
-    except Exception as e:
-        logger.error(f"Failed to send message to SQS. Error: {e}")
-
-    def get_yolo5_results(self, img_name):
         try:
-            logger.info(f'Sending imgName to YOLOv5: {img_name}')
-            YOLOV5_URL = os.getenv("YOLOV5_URL", "http://yolo5-service:5000")
-            response = requests.post(f"{YOLOV5_URL}/predict", json={"imgName": img_name})
-
-            # Log the response status and any errors
-            if response.status_code == 200:
-                logger.info(f"YOLOv5 prediction result: {response.json()}")
-            else:
-                logger.error(f"Error in YOLOv5 request: {response.status_code} - {response.text}")
-
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            logger.error(f"YOLOv5 service error: {e}")
-            return None
+            response = sqs_client.send_message(
+                QueueUrl=os.environ['SQS_QUEUE_URL'],
+                MessageBody=json.dumps({'imgName': img_name, 's3Url': s3_url}),
+                MessageGroupId='image-processing',  # If using FIFO
+            )
+            logger.info(f"Message sent to SQS: {response['MessageId']}")
+        except Exception as e:
+            logger.error(f"Failed to send message to SQS. Error: {e}")
 
     def handle_message(self, msg):
         try:
@@ -134,19 +114,8 @@ class ObjectDetectionBot:
                     self.send_text(chat_id, f"Image uploaded: {image_url}")
                     self.send_to_sqs(os.path.basename(photo_path), image_url)
 
-                    logger.info('Sending to YOLOv5...')
-                    img_name = os.path.basename(photo_path)
-                    yolo_results = self.get_yolo5_results(img_name)
-
-                    if yolo_results and 'predictions' in yolo_results:
-                        detected_objects = [obj['class'] for obj in yolo_results['predictions']]
-                        results_text = f"Detected: {', '.join(detected_objects)}" if detected_objects else "No objects detected."
-                    elif yolo_results is None:
-                        results_text = "Error processing the image."
-                    else:
-                        results_text = "No predictions found."
-
-                    self.send_text(chat_id, results_text)
+                    # Wait for Yolo5 to process the image and send results back to Polybot
+                    # This part is handled by Yolo5 sending a POST request to Polybot's /results endpoint
 
                 except Exception as e:
                     logger.error(f"Processing error: {e}")
@@ -156,3 +125,36 @@ class ObjectDetectionBot:
 
         except Exception as e:
             logger.error(f"Error handling message: {e}")
+
+# Add an endpoint to handle results from Yolo5
+# This should be implemented in your Flask or web framework of choice
+
+# Example using Flask:
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+@app.route('/results', methods=['POST'])
+def handle_results():
+    try:
+        data = request.get_json()
+        prediction_id = data['predictionId']
+        # Retrieve results from MongoDB
+        mongo_client = pymongo.MongoClient(os.environ['MONGODB_URI'])
+        db = mongo_client['your_database']
+        collection = db['your_collection']
+        results = collection.find_one({'predictionId': prediction_id})
+
+        if results:
+            detected_objects = results['labels']
+            results_text = f"Detected: {', '.join([obj['class'] for obj in detected_objects])}" if detected_objects else "No objects detected."
+        else:
+            results_text = "No predictions found."
+
+        return results_text
+    except Exception as e:
+        logger.error(f"Error retrieving results: {e}")
+        return "Error processing the request."
+
+if __name__ == "__main__":
+    app.run(debug=True)
