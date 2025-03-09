@@ -21,28 +21,28 @@ class ObjectDetectionBot:
     def __init__(self):
         # Load secrets from AWS Secrets Manager
         secrets = get_secret('polybot-secrets')
-        if not secrets:
+        if secrets:
+            self.mongo_uri = secrets['MONGO_URI']
+            self.mongo_db = secrets['MONGO_DB']
+            self.mongo_collection = secrets['MONGO_COLLECTION']
+            self.sqs_queue_url = secrets['SQS_QUEUE_URL']
+            self.telegram_app_url = secrets['TELEGRAM_APP_URL']
+            self.s3_bucket_name = secrets['S3_BUCKET_NAME']
+            self.telegram_token = secrets['TELEGRAM_TOKEN']
+        else:
             raise RuntimeError("Failed to load secrets from AWS Secrets Manager")
-
-        self.mongo_uri = secrets['MONGO_URI']
-        self.mongo_db = secrets['MONGO_DB']
-        self.mongo_collection = secrets['MONGO_COLLECTION']
-        self.sqs_queue_url = secrets['SQS_QUEUE_URL']
-        self.s3_bucket_name = secrets['S3_BUCKET_NAME']
-        self.aws_access_key_id = secrets['AWS_ACCESS_KEY_ID']
-        self.aws_secret_access_key = secrets['AWS_SECRET_ACCESS_KEY']
-        self.telegram_token = secrets['TELEGRAM_TOKEN']
 
         # Initialize Telegram bot
         self.telegram_bot_client = telebot.TeleBot(self.telegram_token)
 
-        # Initialize AWS clients
+        self.telegram_bot_client = telebot.TeleBot(telegram_token)
+        self.s3_bucket_name = s3_bucket_name
         self.s3_client = boto3.client(
             's3',
-            aws_access_key_id=self.aws_access_key_id,
-            aws_secret_access_key=self.aws_secret_access_key,
-            region_name='eu-north-1'
-        )
+        aws_access_key_id=self.aws_access_key_id,
+        aws_secret_access_key=self.aws_secret_access_key,
+        region_name='eu-north-1'
+)
 
         self.sqs_client = boto3.client(
             'sqs',
