@@ -1,25 +1,19 @@
-import flask  # Import Flask library
-from flask import request  # Import flask request object
-import os  # Import os module to get environment variables
-import boto3  # Import boto3 to interact with AWS services
-from bot import ObjectDetectionBot  # Import custom bot class
-import logging  # Import logging module
+import flask
+from flask import request
+import os
+import boto3
+from bot import ObjectDetectionBot
+import logging
 import json
-import requests  # Import requests to make HTTP requests
+import requests
 import time
 import pymongo
 
-logging.basicConfig(level=logging.INFO)  # Set logging level
-logger = logging.getLogger(__name__)  # Create the logger
-app = flask.Flask(__name__)  # Initialize the flask app
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+app = flask.Flask(__name__)
 
-@app.route('/health', methods=['GET'])
-def health_check():
-    return "OK", 200
-
-YOLOV5_URL = os.getenv("YOLOV5_URL", "http://yolo5-service.default.svc.cluster.local:5000")
-
-# --- Configuration ---
+# --- Fetch secrets from AWS Secrets Manager ---
 secrets_client = boto3.client('secretsmanager', region_name="eu-north-1")
 response = secrets_client.get_secret_value(SecretId="polybot-secrets")
 secrets = json.loads(response['SecretString'])
@@ -46,7 +40,6 @@ bot = ObjectDetectionBot(TELEGRAM_TOKEN, S3_BUCKET_NAME)
 def check_webhook_status():
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getWebhookInfo"
     response = requests.get(url)
-
     if response.status_code == 200:
         webhook_info = response.json()
         if webhook_info['result']['url']:
