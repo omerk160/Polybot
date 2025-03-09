@@ -33,21 +33,12 @@ class ObjectDetectionBot:
             raise RuntimeError("Failed to load secrets from AWS Secrets Manager")
 
         # Initialize Telegram bot
-        self.telegram_bot_client = telebot.TeleBot(self.telegram_token)
 
         self.telegram_bot_client = telebot.TeleBot(telegram_token)
         self.s3_bucket_name = s3_bucket_name
-        self.s3_client = boto3.client(
-            's3',
-        region_name='eu-north-1'
-)
 
-        self.sqs_client = boto3.client(
-            'sqs',
-            aws_access_key_id=self.aws_access_key_id,
-            aws_secret_access_key=self.aws_secret_access_key,
-            region_name='eu-north-1'
-        )
+        self.s3_client = boto3.client('s3', region_name='eu-north-1')
+        self.sqs_client = boto3.client('sqs', region_name='eu-north-1')
 
         # MongoDB connection
         try:
