@@ -76,4 +76,32 @@ class ObjectDetectionBot:
             logger.error(f"Failed to send message to SQS. Error: {e}")
 
     def handle_message(self, msg):
-        logger.info(f"Handling message: {msg}")
+        try:
+            chat_id = msg.chat.id
+            logger.info(f"Handling message from chat ID: {chat_id}")
+
+            if self.is_current_msg_photo(msg):
+                try:
+                    logger.info('Downloading user photo...')
+                    photo_path = self.download_user_photo(msg)
+                    logger.info(f'Photo saved at {photo_path}')
+
+                    logger.info('Uploading to S3...')
+                    image_url = self.upload_to_s3(photo_path)
+                    logger.info(f"Image uploaded to S3: {image_url}")
+                    if not image_url:
+                        self.send_text(chat_id, "Failed to upload image to S3.")
+                        return
+
+                    self.send_text(chat_id, f"Image uploaded: {image_url}")
+                    self.send_to_sqs(os.path.basename(photo_path), image_url)
+
+                except Exception as e:
+                    logger.error(f"Processing error: {e}")
+                    self.send_text(chat_id, f"Error processing the image: {str(e)}")
+            else:
+                self.send_text(chat_id, "Please send a photo.")
+
+        except Exception as e:
+            logger.error(f"Error handling message: {e}")
+

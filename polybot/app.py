@@ -1,110 +1,106 @@
-import flask  # Import Flask library
-from flask import request  # Import flask request object
-import os  # Import os module to get environment variables
-import boto3  # Import boto3 to interact with AWS services
-from bot import ObjectDetectionBot  # Import custom bot class
-import logging  # Import logging module
-import json
-import requests  # Import requests to make HTTP requests
+import telebot
+from loguru import logger
+import os
 import time
+import requests
+from telebot.types import InputFile
+import boto3
 import pymongo
+import json
 
-logging.basicConfig(level=logging.INFO)  # Set logging level
-logger = logging.getLogger(__name__)  # Create the logger
-app = flask.Flask(__name__)  # Initialize the flask app
+class ObjectDetectionBot:
+    def __init__(self, token, s3_bucket_name):
+        self.telegram_bot_client = telebot.TeleBot(token)
+        self.s3_bucket_name = s3_bucket_name
+        self.s3_client = boto3.client('s3', region_name='eu-north-1')
 
-@app.route('/health', methods=['GET'])
-def health_check():
-    return "OK", 200
+        self.mongo_client = pymongo.MongoClient(os.environ['MONGO_URI'])
+        self.db = self.mongo_client[os.environ['MONGO_DB']]
+        self.collection = self.db[os.environ['MONGO_COLLECTION']]
 
-YOLOV5_URL = os.getenv("YOLOV5_URL", "http://yolo5-service.default.svc.cluster.local:5000")
+    def send_text(self, chat_id, text):
+        try:
+            self.telegram_bot_client.send_message(chat_id, text)
+        except telebot.apihelper.ApiTelegramException as e:
+            logger.error(f"Failed to send message to chat {chat_id}. Error: {e}")
+        except Exception as e:
+            logger.error(f"Unknown error occurred while sending message to chat {chat_id}. Error: {e}")
 
-# --- Configuration ---
-secrets_client = boto3.client('secretsmanager', region_name="eu-north-1")
-response = secrets_client.get_secret_value(SecretId="polybot-secrets")
-secrets = json.loads(response['SecretString'])
+    def is_current_msg_photo(self, msg):
+        return bool(msg.photo)
 
-os.environ["TELEGRAM_TOKEN"] = secrets["TELEGRAM_TOKEN"]
-os.environ["S3_BUCKET_NAME"] = secrets["S3_BUCKET_NAME"]
-os.environ["SQS_QUEUE_URL"] = secrets["SQS_QUEUE_URL"]
-os.environ["TELEGRAM_APP_URL"] = secrets["TELEGRAM_APP_URL"]
-os.environ["MONGO_URI"] = secrets["MONGO_URI"]
-os.environ["MONGO_DB"] = "config"
-os.environ["MONGO_COLLECTION"] = "image_collection"
+    def download_user_photo(self, msg):
+        if not msg.photo:
+            raise RuntimeError('Message does not contain a photo')
 
-TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
-S3_BUCKET_NAME = os.environ["S3_BUCKET_NAME"]
-SQS_QUEUE_URL = os.environ["SQS_QUEUE_URL"]
-TELEGRAM_APP_URL = os.environ["TELEGRAM_APP_URL"]
+        file_id = msg.photo[-1].file_id
+        file_info = self.telegram_bot_client.get_file(file_id)
+        data = self.telegram_bot_client.download_file(file_info.file_path)
 
-# --- S3 Client Initialization ---
-s3_client = boto3.client('s3')
+        folder_name = 'photos'
+        os.makedirs(folder_name, exist_ok=True)
 
-# --- Bot Initialization ---
-bot = ObjectDetectionBot(TELEGRAM_TOKEN, S3_BUCKET_NAME)
+        file_path = os.path.join(folder_name, os.path.basename(file_info.file_path))
+        with open(file_path, 'wb') as photo:
+            photo.write(data)
 
-def check_webhook_status():
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getWebhookInfo"
-    response = requests.get(url)
+        return file_path
 
-    if response.status_code == 200:
-        webhook_info = response.json()
-        if webhook_info['result']['url']:
-            logger.info(f"Webhook is already set to: {webhook_info['result']['url']}")
-            return True
-    return False
-
-def set_webhook():
-    webhook_url = f"{TELEGRAM_APP_URL}/{TELEGRAM_TOKEN}"
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook?url={webhook_url}"
-
-    for _ in range(5):
-        response = requests.get(url)
-        if response.status_code == 200:
-            logger.info(f"Webhook set successfully: {webhook_url}")
-            return
-        elif response.status_code == 429:
-            retry_after = response.json().get('parameters', {}).get('retry_after', 1)
-            logger.info(f"Too many requests. Retrying after {retry_after} seconds...")
-            time.sleep(retry_after)
-        else:
-            logger.error(f"Failed to set webhook: {response.text}")
+    def send_photo(self, chat_id, img_path):
+        if not os.path.exists(img_path):
+            logger.error(f"Image path does not exist: {img_path}")
             return
 
-if not check_webhook_status():
-    set_webhook()
+        with open(img_path, 'rb') as img:
+            self.telegram_bot_client.send_photo(chat_id, img)
 
-@app.route(f'/{TELEGRAM_TOKEN}/', methods=['POST'])
-def webhook():
-    try:
-        req = request.get_json()
-        logger.info(f'Received webhook request: {req}')
-        bot.handle_message(req['message'])
-        return 'Ok'
-    except Exception as e:
-        logger.error(f"Error handling webhook request: {e}")
-        return 'Error', 500
+    def upload_to_s3(self, file_path):
+        try:
+            s3_key = os.path.basename(file_path)
+            self.s3_client.upload_file(file_path, self.s3_bucket_name, s3_key)
+            return f'https://{self.s3_bucket_name}.s3.amazonaws.com/{s3_key}'
+        except Exception as e:
+            logger.error(f"Failed to upload {file_path} to S3. Error: {e}")
+            return None
 
-@app.route('/results', methods=['POST'])
-def handle_results():
-    try:
-        data = request.get_json()
-        prediction_id = data['predictionId']
-        mongo_client = pymongo.MongoClient(os.environ['MONGO_URI'])
-        db = mongo_client['config']
-        collection = db['image_collection']
-        results = collection.find_one({'predictionId': prediction_id})
+    def send_to_sqs(self, img_name, s3_url):
+        sqs_client = boto3.client('sqs', region_name='eu-north-1')
+        try:
+            response = sqs_client.send_message(
+                QueueUrl=os.environ['SQS_QUEUE_URL'],
+                MessageBody=json.dumps({'imgName': img_name, 's3Url': s3_url}),
+                MessageGroupId='image-processing',
+            )
+            logger.info(f"Message sent to SQS: {response['MessageId']}")
+        except Exception as e:
+            logger.error(f"Failed to send message to SQS. Error: {e}")
 
-        if results:
-            detected_objects = results['labels']
-            results_text = f"Detected: {', '.join([obj['class'] for obj in detected_objects])}" if detected_objects else "No objects detected."
-        else:
-            results_text = "No predictions found."
+    def handle_message(self, msg):
+        try:
+            chat_id = msg.chat.id
+            logger.info(f"Handling message from chat ID: {chat_id}")
 
-        return results_text
-    except Exception as e:
-        logger.error(f"Error processing results request: {e}")
-        return "Error", 500
+            if self.is_current_msg_photo(msg):
+                try:
+                    logger.info('Downloading user photo...')
+                    photo_path = self.download_user_photo(msg)
+                    logger.info(f'Photo saved at {photo_path}')
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=30619, ssl_context=("polybot.crt", "privkey.pem"))
+                    logger.info('Uploading to S3...')
+                    image_url = self.upload_to_s3(photo_path)
+                    logger.info(f"Image uploaded to S3: {image_url}")
+                    if not image_url:
+                        self.send_text(chat_id, "Failed to upload image to S3.")
+                        return
+
+                    self.send_text(chat_id, f"Image uploaded: {image_url}")
+                    self.send_to_sqs(os.path.basename(photo_path), image_url)
+
+                except Exception as e:
+                    logger.error(f"Processing error: {e}")
+                    self.send_text(chat_id, f"Error processing the image: {str(e)}")
+            else:
+                self.send_text(chat_id, "Please send a photo.")
+
+        except Exception as e:
+            logger.error(f"Error handling message: {e}")
