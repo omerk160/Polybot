@@ -17,6 +17,17 @@ def health_check():
     # You can add more checks here, like database or cache checks
     return "OK", 200
 
+YOLOV5_URL = os.getenv("YOLOV5_URL", "http://yolov5-service.default.svc.cluster.local:5000")
+
+def get_yolo5_results(img_name):
+    try:
+        response = requests.post(f"{YOLOV5_URL}/predict", json={"imgName": img_name})
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        logger.error(f"YOLOv5 service error: {e}")
+        return None
+
 # --- Configuration ---
 secrets_client = boto3.client('secretsmanager', region_name="eu-north-1")
 response = secrets_client.get_secret_value(SecretId="polybot-secrets")
