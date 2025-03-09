@@ -6,6 +6,7 @@ import requests
 from telebot.types import InputFile
 import boto3
 import telebot.types
+import json
 
 
 
@@ -95,10 +96,13 @@ class ObjectDetectionBot:
             logger.info(f'Sending imgName to YOLOv5: {img_name}')
             YOLOV5_URL = os.getenv("YOLOV5_URL", "http://yolo5-service:5000")
             response = requests.post(f"{YOLOV5_URL}/predict", json={"imgName": img_name})
+
+            # Log the response status and any errors
             if response.status_code == 200:
-              print(f"YOLOv5 prediction result: {response.json()}")
+                logger.info(f"YOLOv5 prediction result: {response.json()}")
             else:
-              print(f"Error in YOLOv5 request: {response.status_code} - {response.text}")
+                logger.error(f"Error in YOLOv5 request: {response.status_code} - {response.text}")
+
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
@@ -122,6 +126,7 @@ class ObjectDetectionBot:
 
                     logger.info('Uploading to S3...')
                     image_url = self.upload_to_s3(photo_path)
+                    logger.info(f"Image uploaded to S3: {image_url}")  # Add this log
                     if not image_url:
                         self.send_text(chat_id, "Failed to upload image to S3.")
                         return
