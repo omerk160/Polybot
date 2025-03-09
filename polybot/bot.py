@@ -1,12 +1,9 @@
 import telebot
 from loguru import logger
 import os
-import time
-import requests
-from telebot.types import InputFile
+import json
 import boto3
 import pymongo
-import json
 
 # Function to get secrets from AWS Secrets Manager
 def get_secret(secret_name):
@@ -15,32 +12,53 @@ def get_secret(secret_name):
 
     try:
         response = client.get_secret_value(SecretId=secret_name)
-        secret = response['SecretString']
-        return json.loads(secret)
+        return json.loads(response['SecretString'])
     except Exception as e:
-        print(f"Error retrieving secret: {e}")
+        logger.error(f"Error retrieving secret: {e}")
         return None
 
 class ObjectDetectionBot:
-    def __init__(self, token, s3_bucket_name):
+    def __init__(self):
         # Load secrets from AWS Secrets Manager
         secrets = get_secret('polybot-secrets')
-        if secrets:
-            self.mongo_uri = secrets['MONGO_URI']
-            self.mongo_db = secrets['MONGO_DB']
-            self.mongo_collection = secrets['MONGO_COLLECTION']
-            self.sqs_queue_url = secrets['SQS_QUEUE_URL']
-        else:
+        if not secrets:
             raise RuntimeError("Failed to load secrets from AWS Secrets Manager")
 
-        self.telegram_bot_client = telebot.TeleBot(token)
-        self.s3_bucket_name = s3_bucket_name
-        self.s3_client = boto3.client('s3', region_name='eu-north-1')
+        self.mongo_uri = secrets['MONGO_URI']
+        self.mongo_db = secrets['MONGO_DB']
+        self.mongo_collection = secrets['MONGO_COLLECTION']
+        self.sqs_queue_url = secrets['SQS_QUEUE_URL']
+        self.s3_bucket_name = secrets['S3_BUCKET_NAME']
+        self.aws_access_key_id = secrets['AWS_ACCESS_KEY_ID']
+        self.aws_secret_access_key = secrets['AWS_SECRET_ACCESS_KEY']
+        self.telegram_token = secrets['TELEGRAM_TOKEN']
+
+        # Initialize Telegram bot
+        self.telegram_bot_client = telebot.TeleBot(self.telegram_token)
+
+        # Initialize AWS clients
+        self.s3_client = boto3.client(
+            's3',
+            aws_access_key_id=self.aws_access_key_id,
+            aws_secret_access_key=self.aws_secret_access_key,
+            region_name='eu-north-1'
+        )
+
+        self.sqs_client = boto3.client(
+            'sqs',
+            aws_access_key_id=self.aws_access_key_id,
+            aws_secret_access_key=self.aws_secret_access_key,
+            region_name='eu-north-1'
+        )
 
         # MongoDB connection
-        self.mongo_client = pymongo.MongoClient(self.mongo_uri)
-        self.db = self.mongo_client[self.mongo_db]
-        self.collection = self.db[self.mongo_collection]
+        try:
+            self.mongo_client = pymongo.MongoClient(self.mongo_uri)
+            self.db = self.mongo_client[self.mongo_db]
+            self.collection = self.db[self.mongo_collection]
+        except pymongo.errors.PyMongoError as e:
+            logger.error(f"Error connecting to MongoDB: {e}")
+            raise
 
     def send_text(self, chat_id, text):
         try:
@@ -55,7 +73,7 @@ class ObjectDetectionBot:
 
     def download_user_photo(self, msg):
         if not msg.photo:
-            raise RuntimeError('Message does not contain a photo')
+            raise RuntimeError("The message doesn't contain a photo. Please send a photo.")
 
         file_id = msg.photo[-1].file_id
         file_info = self.telegram_bot_client.get_file(file_id)
@@ -88,12 +106,11 @@ class ObjectDetectionBot:
             return None
 
     def send_to_sqs(self, img_name, s3_url):
-        sqs_client = boto3.client('sqs', region_name='eu-north-1')
         try:
-            response = sqs_client.send_message(
+            message_body = json.dumps({'imgName': img_name, 's3Url': s3_url})
+            response = self.sqs_client.send_message(
                 QueueUrl=self.sqs_queue_url,
-                MessageBody=json.dumps({'imgName': img_name, 's3Url': s3_url}),
-                MessageGroupId='image-processing',
+                MessageBody=message_body
             )
             logger.info(f"Message sent to SQS: {response['MessageId']}")
         except Exception as e:
@@ -113,6 +130,7 @@ class ObjectDetectionBot:
                     logger.info('Uploading to S3...')
                     image_url = self.upload_to_s3(photo_path)
                     logger.info(f"Image uploaded to S3: {image_url}")
+
                     if not image_url:
                         self.send_text(chat_id, "Failed to upload image to S3.")
                         return
@@ -120,11 +138,14 @@ class ObjectDetectionBot:
                     self.send_text(chat_id, f"Image uploaded: {image_url}")
                     self.send_to_sqs(os.path.basename(photo_path), image_url)
 
+                    # Cleanup the photo after upload
+                    os.remove(photo_path)
+
                 except Exception as e:
                     logger.error(f"Processing error: {e}")
                     self.send_text(chat_id, f"Error processing the image: {str(e)}")
             else:
-                self.send_text(chat_id, "Please send a photo.")
+                self.send_text(chat_id, "I can only process photos. Please send a photo.")
 
         except Exception as e:
             logger.error(f"Error handling message: {e}")
