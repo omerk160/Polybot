@@ -81,7 +81,7 @@ class ObjectDetectionBot:
     def get_yolo5_results(self, img_name):
         try:
             logger.info(f'Sending imgName to YOLOv5: {img_name}')
-            response = requests.post("http://yolov5-service:8081/predict", json={"imgName": img_name})
+            response = requests.post("http://yolo5-service:5000/predict", json={"imgName": img_name})
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:

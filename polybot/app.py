@@ -19,8 +19,6 @@ def health_check():
 
 YOLOV5_URL = os.getenv("YOLOV5_URL", "http://yolo5-service.default.svc.cluster.local:5000")
 
-YOLOV5_URL = os.getenv("YOLOV5_URL", "http://yolo5-service.default.svc.cluster.local:5000")
-
 def get_yolo5_results(img_name):
     try:
         response = requests.post(f"{YOLOV5_URL}/predict", json={"imgName": img_name})
