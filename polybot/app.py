@@ -8,15 +8,39 @@ import boto3
 import pymongo
 import json
 
+# Function to get secrets from AWS Secrets Manager
+def get_secret(secret_name):
+    region_name = "eu-north-1"  # Your AWS region
+    client = boto3.client("secretsmanager", region_name=region_name)
+
+    try:
+        response = client.get_secret_value(SecretId=secret_name)
+        secret = response['SecretString']
+        return json.loads(secret)
+    except Exception as e:
+        print(f"Error retrieving secret: {e}")
+        return None
+
 class ObjectDetectionBot:
     def __init__(self, token, s3_bucket_name):
+        # Load secrets from AWS Secrets Manager
+        secrets = get_secret('polybot-secrets')
+        if secrets:
+            self.mongo_uri = secrets['MONGO_URI']
+            self.mongo_db = secrets['MONGO_DB']
+            self.mongo_collection = secrets['MONGO_COLLECTION']
+            self.sqs_queue_url = secrets['SQS_QUEUE_URL']
+        else:
+            raise RuntimeError("Failed to load secrets from AWS Secrets Manager")
+
         self.telegram_bot_client = telebot.TeleBot(token)
         self.s3_bucket_name = s3_bucket_name
         self.s3_client = boto3.client('s3', region_name='eu-north-1')
 
-        self.mongo_client = pymongo.MongoClient(os.environ['MONGO_URI'])
-        self.db = self.mongo_client[os.environ['MONGO_DB']]
-        self.collection = self.db[os.environ['MONGO_COLLECTION']]
+        # MongoDB connection
+        self.mongo_client = pymongo.MongoClient(self.mongo_uri)
+        self.db = self.mongo_client[self.mongo_db]
+        self.collection = self.db[self.mongo_collection]
 
     def send_text(self, chat_id, text):
         try:
@@ -67,7 +91,7 @@ class ObjectDetectionBot:
         sqs_client = boto3.client('sqs', region_name='eu-north-1')
         try:
             response = sqs_client.send_message(
-                QueueUrl=os.environ['SQS_QUEUE_URL'],
+                QueueUrl=self.sqs_queue_url,
                 MessageBody=json.dumps({'imgName': img_name, 's3Url': s3_url}),
                 MessageGroupId='image-processing',
             )
