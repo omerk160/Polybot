@@ -34,4 +34,4 @@ ENV AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
 ENV AWS_SECRET_KEY=${AWS_SECRET_KEY}
 
 # Run app.py when the container launches
-CMD ["python", "app.py"]
+CMD ["python3", "app.py"]
