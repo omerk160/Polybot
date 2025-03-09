@@ -78,10 +78,23 @@ class ObjectDetectionBot:
             logger.error(f"Failed to upload {file_path} to S3. Error: {e}")
             return None
 
+    def send_to_sqs(self, img_name, s3_url):
+        sqs_client = boto3.client('sqs', region_name='eu-north-1')
+    try:
+        response = sqs_client.send_message(
+            QueueUrl=os.environ['SQS_QUEUE_URL'],
+            MessageBody=json.dumps({'imgName': img_name, 's3Url': s3_url}),
+            MessageGroupId='image-processing',  # If using FIFO
+        )
+        logger.info(f"Message sent to SQS: {response['MessageId']}")
+    except Exception as e:
+        logger.error(f"Failed to send message to SQS. Error: {e}")
+
     def get_yolo5_results(self, img_name):
         try:
             logger.info(f'Sending imgName to YOLOv5: {img_name}')
-            response = requests.post("http://yolo5-service:5000/predict", json={"imgName": img_name})
+            YOLOV5_URL = os.getenv("YOLOV5_URL", "http://yolo5-service.default.svc.cluster.local:5000")
+            response = requests.post(f"{YOLOV5_URL}/predict", json={"imgName": img_name})
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
@@ -110,6 +123,7 @@ class ObjectDetectionBot:
                         return
 
                     self.send_text(chat_id, f"Image uploaded: {image_url}")
+                    self.send_to_sqs(os.path.basename(photo_path), image_url)
 
                     logger.info('Sending to YOLOv5...')
                     img_name = os.path.basename(photo_path)
