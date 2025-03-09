@@ -93,7 +93,7 @@ class ObjectDetectionBot:
     def get_yolo5_results(self, img_name):
         try:
             logger.info(f'Sending imgName to YOLOv5: {img_name}')
-            YOLOV5_URL = os.getenv("YOLOV5_URL", "http://yolo5-service.default.svc.cluster.local:5000")
+            YOLOV5_URL = os.getenv("YOLOV5_URL", "http://yolo5-service:5000")
             response = requests.post(f"{YOLOV5_URL}/predict", json={"imgName": img_name})
             response.raise_for_status()
             return response.json()
