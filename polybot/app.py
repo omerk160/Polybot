@@ -17,7 +17,7 @@ def health_check():
     # You can add more checks here, like database or cache checks
     return "OK", 200
 
-YOLOV5_URL = os.getenv("YOLOV5_URL", "http://yolov5-service.default.svc.cluster.local:5000")
+YOLOV5_URL = os.getenv("YOLOV5_URL", "http://yolo5-service.default.svc.cluster.local:5000")
 
 def get_yolo5_results(img_name):
     try:
