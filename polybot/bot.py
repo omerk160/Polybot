@@ -105,37 +105,37 @@ class ObjectDetectionBot:
         except Exception as e:
             logger.error(f"Failed to send message to SQS. Error: {e}")
 
-    def handle_message(self, msg):
-        try:
-            logger.info(f"Handling message: {msg.__dict__}")
-            chat_id = msg.chat.id
-            logger.info(f"Handling message from chat ID: {chat_id}")
+def handle_message(self, msg):
+    try:
+        logger.info(f"Handling message: {msg}")  # Log the dictionary directly
+        chat_id = msg.get('chat', {}).get('id', None)  # Accessing chat ID from dictionary
+        logger.info(f"Handling message from chat ID: {chat_id}")
 
-            if self.is_current_msg_photo(msg):
-                try:
-                    logger.info('Downloading user photo...')
-                    photo_path = self.download_user_photo(msg)
-                    logger.info(f'Photo saved at {photo_path}')
+        if self.is_current_msg_photo(msg):
+            try:
+                logger.info('Downloading user photo...')
+                photo_path = self.download_user_photo(msg)
+                logger.info(f'Photo saved at {photo_path}')
 
-                    logger.info('Uploading to S3...')
-                    image_url = self.upload_to_s3(photo_path)
-                    logger.info(f"Image uploaded to S3: {image_url}")
+                logger.info('Uploading to S3...')
+                image_url = self.upload_to_s3(photo_path)
+                logger.info(f"Image uploaded to S3: {image_url}")
 
-                    if not image_url:
-                        self.send_text(chat_id, "Failed to upload image to S3.")
-                        return
+                if not image_url:
+                    self.send_text(chat_id, "Failed to upload image to S3.")
+                    return
 
-                    self.send_text(chat_id, f"Image uploaded: {image_url}")
-                    self.send_to_sqs(os.path.basename(photo_path), image_url)
+                self.send_text(chat_id, f"Image uploaded: {image_url}")
+                self.send_to_sqs(os.path.basename(photo_path), image_url)
 
-                    # Cleanup the photo after upload
-                    os.remove(photo_path)
+                # Cleanup the photo after upload
+                os.remove(photo_path)
 
-                except Exception as e:
-                    logger.error(f"Processing error: {e}")
-                    self.send_text(chat_id, f"Error processing the image: {str(e)}")
-            else:
-                self.send_text(chat_id, "I can only process photos. Please send a photo.")
+            except Exception as e:
+                logger.error(f"Processing error: {e}")
+                self.send_text(chat_id, f"Error processing the image: {str(e)}")
+        else:
+            self.send_text(chat_id, "I can only process photos. Please send a photo.")
 
-        except Exception as e:
-            logger.error(f"Error handling message: {e}")
+    except Exception as e:
+        logger.error(f"Error handling message: {e}")
