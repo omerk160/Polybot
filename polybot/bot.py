@@ -58,7 +58,7 @@ class ObjectDetectionBot:
             logger.error(f"Unknown error occurred while sending message to chat {chat_id}. Error: {e}")
 
     def is_current_msg_photo(self, msg):
-        return bool(msg.photo)
+        return bool(msg.get('photo', None))
 
     def download_user_photo(self, msg):
         if not msg.photo:
