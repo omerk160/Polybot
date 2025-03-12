@@ -107,6 +107,7 @@ class ObjectDetectionBot:
 
     def handle_message(self, msg):
         try:
+            logger.info(f"Handling message: {msg.__dict__}")
             chat_id = msg.chat.id
             logger.info(f"Handling message from chat ID: {chat_id}")
 
