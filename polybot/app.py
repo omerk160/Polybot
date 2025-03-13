@@ -96,11 +96,13 @@ def handle_results():
     try:
         data = request.get_json()
         prediction_id = data.get('predictionId')
+        logger.info(f"Processing predictionId: {prediction_id}")
 
         if not prediction_id:
             logger.error("No predictionId provided in the request.")
             return "Prediction ID missing", 400
         results = app.mongo_collection.find_one({'_id': prediction_id})
+        logger.info(f"Retrieved from MongoDB: {results}")
         # MongoDB client initialization
         mongo_client = pymongo.MongoClient(os.environ['MONGO_URI'])
         db = mongo_client[os.environ['MONGO_DB']]
@@ -115,34 +117,29 @@ def handle_results():
             results_text = f"Detected: {', '.join([obj['class'] for obj in detected_objects])}" if detected_objects else "No objects detected."
             chat_id = results.get('chat_id')
             predicted_img_path = results.get('predicted_img_path')
+            logger.info(f"Results text: {results_text}, Chat ID: {chat_id}, Image: {predicted_img_path}")
 
             if not chat_id:
-                logger.error(f"No chat_id found in prediction: {prediction_id}")
-                return "Chat ID missing in prediction", 500
+                logger.error(f"No chat_id in prediction: {prediction_id}")
+                return "Chat ID missing", 500
 
-            # Send detection results to Telegram
             bot.send_text(chat_id, results_text)
-
-            # Send predicted image to Telegram if available
             if predicted_img_path:
                 local_img_path = f"/tmp/{prediction_id}.jpg"
                 try:
                     s3_client.download_file(S3_BUCKET_NAME, predicted_img_path, local_img_path)
                     bot.send_photo(chat_id, local_img_path)
-                    os.remove(local_img_path)  # Clean up
+                    os.remove(local_img_path)
                 except Exception as e:
-                    logger.error(f"Failed to send predicted image: {e}")
+                    logger.error(f"Failed to send image: {e}")
                     bot.send_text(chat_id, "Error sending predicted image.")
         else:
             logger.warning(f"No prediction found for ID: {prediction_id}")
             return "No predictions found", 404
 
         return "Results sent to Telegram", 200
-    except pymongo.errors.PyMongoError as e:
-        logger.error(f"Error interacting with MongoDB: {e}")
-        return "Database error", 500
     except Exception as e:
-        logger.error(f"Error processing results request: {e}")
+        logger.error(f"Error in /results: {e}")
         return "Error", 500
 
 if __name__ == "__main__":
