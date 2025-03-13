@@ -100,7 +100,7 @@ def handle_results():
         if not prediction_id:
             logger.error("No predictionId provided in the request.")
             return "Prediction ID missing", 400
-
+        results = app.mongo_collection.find_one({'_id': prediction_id})
         # MongoDB client initialization
         mongo_client = pymongo.MongoClient(os.environ['MONGO_URI'])
         db = mongo_client[os.environ['MONGO_DB']]
