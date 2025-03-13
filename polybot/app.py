@@ -108,6 +108,7 @@ def handle_results():
 
         # Query by '_id' since that's the key used in yolo5/app.py
         results = collection.find_one({'_id': prediction_id})
+        logger.info(f"Retrieved prediction: {results}")
 
         if results:
             detected_objects = results.get('labels', [])
