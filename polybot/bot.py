@@ -64,18 +64,18 @@ class ObjectDetectionBot:
         logger.info(f"Downloading photo with file_id: {file_id}")
 
         try:
-          file_info = self.telegram_bot_client.get_file(file_id)
-          data = self.telegram_bot_client.download_file(file_info.file_path)
+            file_info = self.telegram_bot_client.get_file(file_id)
+            data = self.telegram_bot_client.download_file(file_info.file_path)
 
-          folder_name = 'photos'
-          os.makedirs(folder_name, exist_ok=True)
+            folder_name = 'photos'
+            os.makedirs(folder_name, exist_ok=True)
 
-          # Use the file_id to create a unique filename
-          file_path = os.path.join(folder_name, f"{file_id}.jpg")
-          with open(file_path, 'wb') as photo:
-              photo.write(data)
+            # Use the file_id to create a unique filename
+            file_path = os.path.join(folder_name, f"{file_id}.jpg")
+            with open(file_path, 'wb') as photo:
+                photo.write(data)
 
-          return file_path
+            return file_path
 
         except Exception as e:
             logger.error(f"Error downloading photo: {e}")
@@ -88,9 +88,9 @@ class ObjectDetectionBot:
             return
 
         try:
-          with open(img_path, 'rb') as img:
-            self.telegram_bot_client.send_photo(chat_id, img)
-            logger.info(f"Photo sent to chat_id: {chat_id}")
+            with open(img_path, 'rb') as img:
+                self.telegram_bot_client.send_photo(chat_id, img)
+                logger.info(f"Photo sent to chat_id: {chat_id}")
         except Exception as e:
             logger.error(f"Error sending photo to chat_id {chat_id}: {e}")
 
@@ -104,9 +104,9 @@ class ObjectDetectionBot:
             logger.error(f"Failed to upload {file_path} to S3. Error: {e}")
             return None
 
-    def send_to_sqs(self, img_name, s3_url):
+    def send_to_sqs(self, img_name, s3_url, chat_id):
         try:
-            message_body = json.dumps({'imgName': img_name, 's3Url': s3_url})
+            message_body = json.dumps({'imgName': img_name, 'chat_id': chat_id, 's3Url': s3_url})
             response = self.sqs_client.send_message(
                 QueueUrl=self.sqs_queue_url,
                 MessageBody=message_body
@@ -152,7 +152,7 @@ class ObjectDetectionBot:
 
                     logger.info(f"Image uploaded to S3: {image_url}")
                     self.send_text(chat_id, f"Image uploaded: {image_url}")
-                    self.send_to_sqs(os.path.basename(photo_path), image_url)
+                    self.send_to_sqs(os.path.basename(photo_path), image_url, chat_id)
 
                     # Cleanup the photo after upload
                     os.remove(photo_path)
@@ -165,5 +165,3 @@ class ObjectDetectionBot:
 
         except Exception as e:
             logger.error(f"Error handling message: {e}")
-
-
