@@ -119,41 +119,38 @@ class ObjectDetectionBot:
         try:
             logger.info(f"Handling message: {msg}")  # Log the dictionary directly
 
-            # Adjust the line to directly access 'chat' from 'message'
-            if 'message' in msg:
-                chat_id = msg['message'].get('chat', {}).get('id', None)
-            else:
-                logger.error("Message structure is unexpected.")
+            # Extract the chat_id correctly
+            chat_id = msg.get('chat', {}).get('id')
+            if not chat_id:
+                logger.error("Failed to retrieve chat ID.")
                 return
 
             logger.info(f"Handling message from chat ID: {chat_id}")
 
-            if chat_id is None:
-                logger.error("Failed to retrieve chat ID.")
-                return
-
             # Check if the message contains a photo
-            if 'message' in msg and 'photo' in msg['message']:
+            if 'photo' in msg:
                 try:
-                    # Get the file_id of the largest photo
-                    file_id = msg['message'].get('photo', [{}])[-1].get('file_id')
+                    # Get the largest photo's file_id (last in the list)
+                    file_id = msg['photo'][-1].get('file_id')
                     if not file_id:
                         logger.error("No file_id found for the photo.")
                         self.send_text(chat_id, "Failed to process the image.")
                         return
 
                     logger.info('Downloading user photo...')
-                    photo_path = self.download_user_photo(file_id)  # Adjust this to use file_id
+                    photo_path = self.download_user_photo(file_id)
+                    if not photo_path:
+                        self.send_text(chat_id, "Error downloading the photo.")
+                        return
                     logger.info(f'Photo saved at {photo_path}')
 
                     logger.info('Uploading to S3...')
                     image_url = self.upload_to_s3(photo_path)
-                    logger.info(f"Image uploaded to S3: {image_url}")
-
                     if not image_url:
                         self.send_text(chat_id, "Failed to upload image to S3.")
                         return
 
+                    logger.info(f"Image uploaded to S3: {image_url}")
                     self.send_text(chat_id, f"Image uploaded: {image_url}")
                     self.send_to_sqs(os.path.basename(photo_path), image_url)
 
@@ -168,4 +165,5 @@ class ObjectDetectionBot:
 
         except Exception as e:
             logger.error(f"Error handling message: {e}")
+
 
