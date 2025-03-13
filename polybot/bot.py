@@ -161,4 +161,3 @@ class ObjectDetectionBot:
 
         except Exception as e:
             logger.error(f"Error handling message: {e}")
-ssage: {e}")
