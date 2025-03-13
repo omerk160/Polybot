@@ -61,6 +61,8 @@ class ObjectDetectionBot:
         return bool(msg.get('photo', None))
 
     def download_user_photo(self, msg):
+        logger.info(f"MSG: {msg}")
+
         if not msg.photo:
             raise RuntimeError("The message doesn't contain a photo. Please send a photo.")
 
@@ -108,13 +110,21 @@ class ObjectDetectionBot:
     def handle_message(self, msg):
         try:
             logger.info(f"Handling message: {msg}")  # Log the dictionary directly
-            chat_id = msg.get('chat', {}).get('id', None)  # Accessing chat Id1odD from dictionary
+            chat_id = msg.get('message', {}).get('chat', {}).get('id', None)  # Accessing chat Id from dictionary
             logger.info(f"Handling message from chat ID: {chat_id}")
 
-            if self.is_current_msg_photo(msg):
+            # Check if the message contains a photo
+            if msg.get('message', {}).get('photo'):
                 try:
+                    # Get the file_id of the largest photo
+                    file_id = msg.get('message', {}).get('photo', [{}])[-1].get('file_id')
+                    if not file_id:
+                        logger.error("No file_id found for the photo.")
+                        self.send_text(chat_id, "Failed to process the image.")
+                        return
+
                     logger.info('Downloading user photo...')
-                    photo_path = self.download_user_photo(msg)
+                    photo_path = self.download_user_photo(file_id)  # Adjust this to use file_id
                     logger.info(f'Photo saved at {photo_path}')
 
                     logger.info('Uploading to S3...')
@@ -139,3 +149,4 @@ class ObjectDetectionBot:
 
         except Exception as e:
             logger.error(f"Error handling message: {e}")
+
