@@ -87,12 +87,12 @@ class ObjectDetectionBot:
             logger.error(f"Image path does not exist: {img_path}")
             return
 
-    try:
-        with open(img_path, 'rb') as img:
+        try:
+          with open(img_path, 'rb') as img:
             self.telegram_bot_client.send_photo(chat_id, img)
-        logger.info(f"Photo sent to chat_id: {chat_id}")
-    except Exception as e:
-        logger.error(f"Error sending photo to chat_id {chat_id}: {e}")
+            logger.info(f"Photo sent to chat_id: {chat_id}")
+        except Exception as e:
+            logger.error(f"Error sending photo to chat_id {chat_id}: {e}")
 
 
     def upload_to_s3(self, file_path):
