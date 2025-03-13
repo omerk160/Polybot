@@ -40,6 +40,12 @@ TELEGRAM_APP_URL = os.environ["TELEGRAM_APP_URL"]
 # --- S3 Client Initialization ---
 s3_client = boto3.client('s3')
 
+# MongoDB Client Initialization
+mongo_client = pymongo.MongoClient(os.environ['MONGO_URI'])
+app.mongo_db = mongo_client[os.environ['MONGO_DB']]
+app.mongo_collection = app.mongo_db[os.environ['MONGO_COLLECTION']]
+logger.info("MongoDB connection initialized")
+
 # --- Bot Initialization ---
 bot = ObjectDetectionBot(TELEGRAM_TOKEN, S3_BUCKET_NAME)
 
