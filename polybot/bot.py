@@ -118,7 +118,14 @@ class ObjectDetectionBot:
     def handle_message(self, msg):
         try:
             logger.info(f"Handling message: {msg}")  # Log the dictionary directly
-            chat_id = msg.get('message', {}).get('chat', {}).get('id', None)  # Accessing chat Id from dictionary
+
+            # Adjust the line to directly access 'chat' from 'message'
+            if 'message' in msg:
+                chat_id = msg['message'].get('chat', {}).get('id', None)
+            else:
+                logger.error("Message structure is unexpected.")
+                return
+
             logger.info(f"Handling message from chat ID: {chat_id}")
 
             if chat_id is None:
@@ -126,10 +133,10 @@ class ObjectDetectionBot:
                 return
 
             # Check if the message contains a photo
-            if msg.get('message', {}).get('photo'):
+            if 'message' in msg and 'photo' in msg['message']:
                 try:
                     # Get the file_id of the largest photo
-                    file_id = msg.get('message', {}).get('photo', [{}])[-1].get('file_id')
+                    file_id = msg['message'].get('photo', [{}])[-1].get('file_id')
                     if not file_id:
                         logger.error("No file_id found for the photo.")
                         self.send_text(chat_id, "Failed to process the image.")
@@ -161,3 +168,4 @@ class ObjectDetectionBot:
 
         except Exception as e:
             logger.error(f"Error handling message: {e}")
+
