@@ -7,9 +7,8 @@ import pymongo
 
 # Function to get secrets from AWS Secrets Manager
 def get_secret(secret_name):
-    region_name = "eu-north-1"  # Your AWS region
+    region_name = "eu-north-1"
     client = boto3.client("secretsmanager", region_name=region_name)
-
     try:
         response = client.get_secret_value(SecretId=secret_name)
         return json.loads(response['SecretString'])
@@ -19,7 +18,6 @@ def get_secret(secret_name):
 
 class ObjectDetectionBot:
     def __init__(self, telegram_token: str, s3_bucket_name: str):
-        # Load secrets from AWS Secrets Manager
         secrets = get_secret('polybot-secrets')
         if secrets:
             self.mongo_uri = secrets['MONGO_URI']
@@ -32,11 +30,8 @@ class ObjectDetectionBot:
         else:
             raise RuntimeError("Failed to load secrets from AWS Secrets Manager")
 
-        # Initialize Telegram bot
-
         self.telegram_bot_client = telebot.TeleBot(telegram_token)
         self.s3_bucket_name = s3_bucket_name
-
         self.s3_client = boto3.client('s3', region_name='eu-north-1')
         self.sqs_client = boto3.client('sqs', region_name='eu-north-1')
 
@@ -49,9 +44,9 @@ class ObjectDetectionBot:
             logger.error(f"Error connecting to MongoDB: {e}")
             raise
 
-    def send_text(self, chat_id, text):
+    def send_text(self, chat_id, text, parse_mode=None):
         try:
-            self.telegram_bot_client.send_message(chat_id, text)
+            self.telegram_bot_client.send_message(chat_id, text, parse_mode=parse_mode)
         except telebot.apihelper.ApiTelegramException as e:
             logger.error(f"Failed to send message to chat {chat_id}. Error: {e}")
         except Exception as e:
@@ -62,44 +57,50 @@ class ObjectDetectionBot:
 
     def download_user_photo(self, file_id):
         logger.info(f"Downloading photo with file_id: {file_id}")
-
         try:
             file_info = self.telegram_bot_client.get_file(file_id)
             data = self.telegram_bot_client.download_file(file_info.file_path)
-
             folder_name = 'photos'
             os.makedirs(folder_name, exist_ok=True)
-
-            # Use the file_id to create a unique filename
             file_path = os.path.join(folder_name, f"{file_id}.jpg")
             with open(file_path, 'wb') as photo:
                 photo.write(data)
-
             return file_path
-
         except Exception as e:
             logger.error(f"Error downloading photo: {e}")
             return None
 
-
-    def send_photo(self, chat_id, img_path):
+    def send_photo(self, chat_id, img_path, caption=None):
         if not os.path.isfile(img_path):
             logger.error(f"Image path does not exist: {img_path}")
             return
-
         try:
-          with open(img_path, 'rb') as img:
-            self.telegram_bot_client.send_photo(chat_id, img)
-            logger.info(f"Photo sent to chat_id: {chat_id}")
+            with open(img_path, 'rb') as img:
+                self.telegram_bot_client.send_photo(chat_id, img, caption=caption)
+                logger.info(f"Photo sent to chat_id: {chat_id}")
         except Exception as e:
             logger.error(f"Error sending photo to chat_id {chat_id}: {e}")
 
+    def get_next_image_number(self):
+        # Find the highest image number in MongoDB
+        latest = self.collection.find_one(sort=[("image_number", pymongo.DESCENDING)])
+        if latest and "image_number" in latest:
+            return latest["image_number"] + 1
+        return 1  # Start at 1 if no images exist
 
     def upload_to_s3(self, file_path):
         try:
-            s3_key = os.path.basename(file_path)
+            image_number = self.get_next_image_number()
+            s3_key = f"image_{image_number}.jpg"
             self.s3_client.upload_file(file_path, self.s3_bucket_name, s3_key)
-            return f'https://{self.s3_bucket_name}.s3.amazonaws.com/{s3_key}'
+            url = f'https://{self.s3_bucket_name}.s3.amazonaws.com/{s3_key}'
+            # Store the image number in MongoDB for tracking
+            self.collection.update_one(
+                {"original_img_path": s3_key},
+                {"$set": {"image_number": image_number}},
+                upsert=True
+            )
+            return url
         except Exception as e:
             logger.error(f"Failed to upload {file_path} to S3. Error: {e}")
             return None
@@ -117,9 +118,7 @@ class ObjectDetectionBot:
 
     def handle_message(self, msg):
         try:
-            logger.info(f"Handling message: {msg}")  # Log the dictionary directly
-
-            # Extract the chat_id correctly
+            logger.info(f"Handling message: {msg}")
             chat_id = msg.get('chat', {}).get('id')
             if not chat_id:
                 logger.error("Failed to retrieve chat ID.")
@@ -127,10 +126,8 @@ class ObjectDetectionBot:
 
             logger.info(f"Handling message from chat ID: {chat_id}")
 
-            # Check if the message contains a photo
             if 'photo' in msg:
                 try:
-                    # Get the largest photo's file_id (last in the list)
                     file_id = msg['photo'][-1].get('file_id')
                     if not file_id:
                         logger.error("No file_id found for the photo.")
@@ -151,17 +148,14 @@ class ObjectDetectionBot:
                         return
 
                     logger.info(f"Image uploaded to S3: {image_url}")
-                    self.send_text(chat_id, f"Image uploaded: {image_url}")
+                    self.send_text(chat_id, f"📤 *Image Uploaded Successfully!*\nURL: {image_url}", parse_mode='Markdown')
                     self.send_to_sqs(os.path.basename(photo_path), image_url, chat_id)
 
-                    # Cleanup the photo after upload
                     os.remove(photo_path)
-
                 except Exception as e:
                     logger.error(f"Processing error: {e}")
                     self.send_text(chat_id, f"Error processing the image: {str(e)}")
             else:
                 self.send_text(chat_id, "I can only process photos. Please send a photo.")
-
         except Exception as e:
             logger.error(f"Error handling message: {e}")

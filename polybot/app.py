@@ -81,7 +81,7 @@ def set_webhook():
                 return
         except requests.exceptions.RequestException as e:
             logger.error(f"Error setting webhook: {e}")
-            time.sleep(2)  # Retry after a short delay
+            time.sleep(2)
 
 if not check_webhook_status():
     set_webhook()
@@ -107,34 +107,45 @@ def handle_results():
         if not prediction_id:
             logger.error("No predictionId provided in the request.")
             return "Prediction ID missing", 400
+
         results = app.mongo_collection.find_one({'_id': prediction_id})
         logger.info(f"Retrieved from MongoDB: {results}")
-        # MongoDB client initialization
-        mongo_client = pymongo.MongoClient(os.environ['MONGO_URI'])
-        db = mongo_client[os.environ['MONGO_DB']]
-        collection = db[os.environ['MONGO_COLLECTION']]
-
-        # Query by '_id' since that's the key used in yolo5/app.py
-        results = collection.find_one({'_id': prediction_id})
-        logger.info(f"Retrieved prediction: {results}")
 
         if results:
             detected_objects = results.get('labels', [])
-            results_text = f"Detected: {', '.join([obj['class'] for obj in detected_objects])}" if detected_objects else "No objects detected."
             chat_id = results.get('chat_id')
             predicted_img_path = results.get('predicted_img_path')
-            logger.info(f"Results text: {results_text}, Chat ID: {chat_id}, Image: {predicted_img_path}")
+            original_img_path = results.get('original_img_path')
 
             if not chat_id:
                 logger.error(f"No chat_id in prediction: {prediction_id}")
                 return "Chat ID missing", 500
 
-            bot.send_text(chat_id, results_text)
+            # Beautified message with Markdown and context
+            if detected_objects:
+                objects_list = "\n".join([f"• *{obj['class']}* (Confidence: {(obj['cx'] + obj['width']) * 100:.1f}%)" for obj in detected_objects])
+                results_text = (
+                    f"🎉 *Image Analysis Complete!* 🎉\n"
+                    f"Your uploaded image ({original_img_path}) has been processed.\n"
+                    f"Here's what I found:\n"
+                    f"{objects_list}\n"
+                    f"⏳ Processed on: {time.strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+            else:
+                results_text = (
+                    f"🔍 *Image Analysis Complete!* 🔍\n"
+                    f"Your uploaded image ({original_img_path}) has been processed.\n"
+                    f"No objects were detected this time.\n"
+                    f"⏳ Processed on: {time.strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+
+            bot.send_text(chat_id, results_text, parse_mode='Markdown')
+
             if predicted_img_path:
                 local_img_path = f"/tmp/{prediction_id}.jpg"
                 try:
                     s3_client.download_file(S3_BUCKET_NAME, predicted_img_path, local_img_path)
-                    bot.send_photo(chat_id, local_img_path)
+                    bot.send_photo(chat_id, local_img_path, caption="📸 Here’s your image with detected objects highlighted!")
                     os.remove(local_img_path)
                 except Exception as e:
                     logger.error(f"Failed to send image: {e}")
