@@ -9,12 +9,10 @@ import requests
 import time
 import pymongo
 
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 app = flask.Flask(__name__)
 
-# --- Fetch secrets from AWS Secrets Manager ---
 secrets_client = boto3.client('secretsmanager', region_name="eu-north-1")
 
 try:
@@ -37,16 +35,13 @@ S3_BUCKET_NAME = os.environ["S3_BUCKET_NAME"]
 SQS_QUEUE_URL = os.environ["SQS_QUEUE_URL"]
 TELEGRAM_APP_URL = os.environ["TELEGRAM_APP_URL"]
 
-# --- S3 Client Initialization ---
 s3_client = boto3.client('s3')
 
-# MongoDB Client Initialization
 mongo_client = pymongo.MongoClient(os.environ['MONGO_URI'])
 app.mongo_db = mongo_client[os.environ['MONGO_DB']]
 app.mongo_collection = app.mongo_db[os.environ['MONGO_COLLECTION']]
 logger.info("MongoDB connection initialized")
 
-# --- Bot Initialization ---
 bot = ObjectDetectionBot(TELEGRAM_TOKEN, S3_BUCKET_NAME)
 
 def check_webhook_status():
@@ -121,37 +116,38 @@ def handle_results():
                 logger.error(f"No chat_id in prediction: {prediction_id}")
                 return "Chat ID missing", 500
 
-            # Simplified Markdown message with proper escaping
+            # Minimal Markdown message
             if detected_objects:
-                objects_list = "\n".join([f"• _{obj['class']}_ ({float(obj['cx'] + obj['width']) * 100:.1f}%)" for obj in detected_objects])
+                objects_list = "\n".join([f"- {obj['class']} ({float(obj['cx'] + obj['width']) * 100:.1f}%)" for obj in detected_objects])
                 results_text = (
-                    f"🎉 *Image Analysis Complete!* 🎉\n"
-                    f"Your image _{original_img_path}_ has been processed.\n"
-                    f"Detected objects:\n"
-                    f"{objects_list}\n"
-                    f"⏳ Time: {time.strftime('%Y-%m-%d %H:%M:%S')}"
+                    f"*Image Analysis Complete!*\n"
+                    f"Image: {original_img_path}\n"
+                    f"Detected:\n{objects_list}\n"
+                    f"Time: {time.strftime('%Y-%m-%d %H:%M:%S')}"
                 )
             else:
                 results_text = (
-                    f"🔍 *Image Analysis Complete!* 🔍\n"
-                    f"Your image _{original_img_path}_ has been processed.\n"
+                    f"*Image Analysis Complete!*\n"
+                    f"Image: {original_img_path}\n"
                     f"No objects detected.\n"
-                    f"⏳ Time: {time.strftime('%Y-%m-%d %H:%M:%S')}"
+                    f"Time: {time.strftime('%Y-%m-%d %H:%M:%S')}"
                 )
 
-            # Try sending with Markdown, fallback to plain text if it fails
+            # Try Markdown, fall back to plain text
             try:
+                logger.info(f"Sending Markdown text: {results_text}")
                 bot.send_text(chat_id, results_text, parse_mode='Markdown')
             except Exception as e:
-                logger.error(f"Markdown failed: {e}. Sending plain text instead.")
-                plain_text = results_text.replace('*', '').replace('_', '')
+                logger.error(f"Markdown failed: {e}. Sending plain text.")
+                plain_text = results_text.replace('*', '')
+                logger.info(f"Sending plain text: {plain_text}")
                 bot.send_text(chat_id, plain_text)
 
             if predicted_img_path:
                 local_img_path = f"/tmp/{prediction_id}.jpg"
                 try:
                     s3_client.download_file(S3_BUCKET_NAME, predicted_img_path, local_img_path)
-                    bot.send_photo(chat_id, local_img_path, caption="📸 Here’s your image with detected objects!")
+                    bot.send_photo(chat_id, local_img_path, caption="Here’s your image with detected objects!")
                     os.remove(local_img_path)
                 except Exception as e:
                     logger.error(f"Failed to send image: {e}")

@@ -5,7 +5,6 @@ import json
 import boto3
 import pymongo
 
-# Function to get secrets from AWS Secrets Manager
 def get_secret(secret_name):
     region_name = "eu-north-1"
     client = boto3.client("secretsmanager", region_name=region_name)
@@ -35,7 +34,6 @@ class ObjectDetectionBot:
         self.s3_client = boto3.client('s3', region_name='eu-north-1')
         self.sqs_client = boto3.client('sqs', region_name='eu-north-1')
 
-        # MongoDB connection
         try:
             self.mongo_client = pymongo.MongoClient(self.mongo_uri)
             self.db = self.mongo_client[self.mongo_db]
@@ -49,8 +47,10 @@ class ObjectDetectionBot:
             self.telegram_bot_client.send_message(chat_id, text, parse_mode=parse_mode)
         except telebot.apihelper.ApiTelegramException as e:
             logger.error(f"Failed to send message to chat {chat_id}. Error: {e}")
+            raise  # Re-raise the exception so the caller can handle it
         except Exception as e:
             logger.error(f"Unknown error occurred while sending message to chat {chat_id}. Error: {e}")
+            raise
 
     def is_current_msg_photo(self, msg):
         return bool(msg.get('photo', None))
@@ -82,11 +82,10 @@ class ObjectDetectionBot:
             logger.error(f"Error sending photo to chat_id {chat_id}: {e}")
 
     def get_next_image_number(self):
-        # Find the highest image number in MongoDB
         latest = self.collection.find_one(sort=[("image_number", pymongo.DESCENDING)])
         if latest and "image_number" in latest:
             return latest["image_number"] + 1
-        return 1  # Start at 1 if no images exist
+        return 1
 
     def upload_to_s3(self, file_path):
         try:
@@ -94,13 +93,12 @@ class ObjectDetectionBot:
             s3_key = f"image_{image_number}.jpg"
             self.s3_client.upload_file(file_path, self.s3_bucket_name, s3_key)
             url = f'https://{self.s3_bucket_name}.s3.amazonaws.com/{s3_key}'
-            # Store the image number in MongoDB for tracking
             self.collection.update_one(
                 {"original_img_path": s3_key},
                 {"$set": {"image_number": image_number}},
                 upsert=True
             )
-            return url, s3_key  # Return both URL and s3_key
+            return url, s3_key
         except Exception as e:
             logger.error(f"Failed to upload {file_path} to S3. Error: {e}")
             return None, None
