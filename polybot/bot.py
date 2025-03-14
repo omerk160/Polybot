@@ -100,14 +100,14 @@ class ObjectDetectionBot:
                 {"$set": {"image_number": image_number}},
                 upsert=True
             )
-            return url
+            return url, s3_key  # Return both URL and s3_key
         except Exception as e:
             logger.error(f"Failed to upload {file_path} to S3. Error: {e}")
-            return None
+            return None, None
 
-    def send_to_sqs(self, img_name, s3_url, chat_id):
+    def send_to_sqs(self, s3_key, s3_url, chat_id):
         try:
-            message_body = json.dumps({'imgName': img_name, 'chat_id': chat_id, 's3Url': s3_url})
+            message_body = json.dumps({'imgName': s3_key, 'chat_id': chat_id, 's3Url': s3_url})
             response = self.sqs_client.send_message(
                 QueueUrl=self.sqs_queue_url,
                 MessageBody=message_body
@@ -142,14 +142,14 @@ class ObjectDetectionBot:
                     logger.info(f'Photo saved at {photo_path}')
 
                     logger.info('Uploading to S3...')
-                    image_url = self.upload_to_s3(photo_path)
-                    if not image_url:
+                    image_url, s3_key = self.upload_to_s3(photo_path)
+                    if not image_url or not s3_key:
                         self.send_text(chat_id, "Failed to upload image to S3.")
                         return
 
                     logger.info(f"Image uploaded to S3: {image_url}")
                     self.send_text(chat_id, f"📤 *Image Uploaded Successfully!*\nURL: {image_url}", parse_mode='Markdown')
-                    self.send_to_sqs(os.path.basename(photo_path), image_url, chat_id)
+                    self.send_to_sqs(s3_key, image_url, chat_id)
 
                     os.remove(photo_path)
                 except Exception as e:
