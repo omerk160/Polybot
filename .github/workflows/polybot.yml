@@ -25,34 +25,45 @@ jobs:
         id: get-latest-tag
         run: |
           echo "Checking for existing tags on guymeltzer/polybot..."
-          
-          # Try to fetch tags with improved error handling
-          RESPONSE=$(curl -s "https://hub.docker.com/v2/repositories/guymeltzer/polybot/tags/?page_size=25" || echo '{"results":[]}')
-          
-          # Check if repository exists by examining response
-          if [[ "$RESPONSE" == *"\"results\":"* ]] && [[ ! "$RESPONSE" == *"\"results\":[]"* ]] && [[ ! "$RESPONSE" == *"object not found"* ]]; then
-            echo "Repository exists, parsing tags..."
-            LATEST_TAG=$(echo "$RESPONSE" | jq -r '.results[] | .name' 2>/dev/null | \
-              grep -E '^1\.0\.[0-9]+$' | \
-              sort -V | \
-              tail -n 1 || echo "")
+
+          # GET request with verbose output for debugging
+          RESPONSE=$(curl -s -v "https://hub.docker.com/v2/repositories/guymeltzer/polybot/tags/?page_size=100&ordering=last_updated" 2>&1)
+          echo "Full API response details:"
+          echo "$RESPONSE"
+
+          # Extract just the JSON response body
+          RESPONSE_BODY=$(echo "$RESPONSE" | grep -v "^*" | grep -v "^>" | grep -v "^<" | grep -v "^}" | tr -d '\n')
+
+          # Check for valid JSON with results
+          if [[ "$RESPONSE_BODY" == *"\"results\":"* ]] && [[ "$RESPONSE_BODY" != *"\"results\":[]"* ]]; then
+            echo "Valid results found, parsing tags..."
+
+            # Extract all tags and print them for debugging
+            ALL_TAGS=$(echo "$RESPONSE_BODY" | jq -r '.results[].name' 2>/dev/null)
+            echo "All available tags: $ALL_TAGS"
+
+            # Filter for version tags and find latest
+            VERSION_TAGS=$(echo "$ALL_TAGS" | grep -E '^1\.0\.[0-9]+$')
+            echo "Version tags: $VERSION_TAGS"
+
+            LATEST_TAG=$(echo "$VERSION_TAGS" | sort -V | tail -n 1)
+            echo "Determined latest tag: $LATEST_TAG"
           else
-            echo "Repository doesn't exist or is empty."
+            echo "No valid results found in API response."
             LATEST_TAG=""
           fi
-          
+
           # Use default if no valid tag found
           if [ -z "$LATEST_TAG" ]; then
-            echo "No valid tag found, starting with 1.0.124"
-            LATEST_TAG="1.0.124"
+            echo "Falling back to default tag 1.0.127"
+            LATEST_TAG="1.0.127"  # Update this to your known latest tag
           fi
-          
+
           PATCH_VERSION=$(echo "$LATEST_TAG" | cut -d'.' -f3)
           NEW_PATCH=$((PATCH_VERSION + 1))
           NEW_TAG="1.0.$NEW_PATCH"
           echo "Latest tag: $LATEST_TAG, New tag: $NEW_TAG"
           echo "NEW_TAG=$NEW_TAG" >> "$GITHUB_OUTPUT"
-        shell: bash
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
