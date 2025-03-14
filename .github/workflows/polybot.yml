@@ -23,15 +23,21 @@ jobs:
       - name: Get Latest Tag from Docker Hub
         id: get-latest-tag
         run: |
-          LATEST_TAG=$(curl -s "https://hub.docker.com/v2/repositories/guymeltzer/polybot/tags/?page_size=25" | \
-            jq -r '.results[] | .name' | \
+          # Debug: Print raw API response
+          RESPONSE=$(curl -s "https://hub.docker.com/v2/repositories/guymeltzer/polybot/tags/?page_size=25")
+          echo "Raw Docker Hub response: $RESPONSE"
+          
+          # Parse tags, handle null or empty results
+          LATEST_TAG=$(echo "$RESPONSE" | jq -r '.results[] | .name' 2>/dev/null | \
             grep -E '^1\.0\.[0-9]+$' | \
             sort -V | \
             tail -n 1)
+          
           if [ -z "$LATEST_TAG" ]; then
-            echo "No valid tag found, starting with 1.0.124"  # Adjust if needed
+            echo "No valid tag found, starting with 1.0.124"
             LATEST_TAG="1.0.124"
           fi
+          
           PATCH_VERSION=$(echo "$LATEST_TAG" | cut -d'.' -f3)
           NEW_PATCH=$((PATCH_VERSION + 1))
           NEW_TAG="1.0.$NEW_PATCH"
@@ -56,8 +62,8 @@ jobs:
       - name: Checkout Manifests Repo
         uses: actions/checkout@v3
         with:
-          repository: <your-username>/manifests  # Replace with your manifests repo
-          token: ${{ secrets.GITHUB_TOKEN }}    # Use PAT if separate repo
+          repository: guymeltzer/manifests  # Adjust to your manifests repo
+          token: ${{ secrets.GITHUB_TOKEN }}
           path: manifests
 
       - name: Update Deployment with New Tag
@@ -73,4 +79,3 @@ jobs:
           git add polybot-deployment.yaml
           git commit -m "Update polybot to ${{ steps.get-latest-tag.outputs.NEW_TAG }}"
           git push
-    #
