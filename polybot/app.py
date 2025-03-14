@@ -156,6 +156,6 @@ def handle_results():
 
 if __name__ == "__main__":
     try:
-        app.run(host="0.0.0.0", port=30619, ssl_context=("/app/certs/tls.crt", "/app/certs/tls.key"))
+        app.run(host="0.0.0.0", port=30184)
     except Exception as e:
         logger.error(f"Failed to start the Flask app: {e}")
