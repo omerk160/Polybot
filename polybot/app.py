@@ -116,32 +116,25 @@ def handle_results():
                 logger.error(f"No chat_id in prediction: {prediction_id}")
                 return "Chat ID missing", 500
 
-            # Minimal Markdown message
+            # Plain text message
             if detected_objects:
                 objects_list = "\n".join([f"- {obj['class']} ({float(obj['cx'] + obj['width']) * 100:.1f}%)" for obj in detected_objects])
                 results_text = (
-                    f"*Image Analysis Complete!*\n"
+                    f"Image Analysis Complete!\n"
                     f"Image: {original_img_path}\n"
                     f"Detected:\n{objects_list}\n"
                     f"Time: {time.strftime('%Y-%m-%d %H:%M:%S')}"
                 )
             else:
                 results_text = (
-                    f"*Image Analysis Complete!*\n"
+                    f"Image Analysis Complete!\n"
                     f"Image: {original_img_path}\n"
                     f"No objects detected.\n"
                     f"Time: {time.strftime('%Y-%m-%d %H:%M:%S')}"
                 )
 
-            # Try Markdown, fall back to plain text
-            try:
-                logger.info(f"Sending Markdown text: {results_text}")
-                bot.send_text(chat_id, results_text, parse_mode='Markdown')
-            except Exception as e:
-                logger.error(f"Markdown failed: {e}. Sending plain text.")
-                plain_text = results_text.replace('*', '')
-                logger.info(f"Sending plain text: {plain_text}")
-                bot.send_text(chat_id, plain_text)
+            logger.info(f"Sending text: {results_text}")
+            bot.send_text(chat_id, results_text)  # Plain text
 
             if predicted_img_path:
                 local_img_path = f"/tmp/{prediction_id}.jpg"
