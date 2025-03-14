@@ -16,7 +16,7 @@ app = flask.Flask(__name__)
 secrets_client = boto3.client('secretsmanager', region_name="eu-north-1")
 
 try:
-    response = secrets_client.get_secret_value(SecretId="polybot-secrets")
+    response = secrets_client.get_secret_value(SecretId="omer-polybot-secrets")
     secrets = json.loads(response['SecretString'])
 
     os.environ["TELEGRAM_TOKEN"] = secrets["TELEGRAM_TOKEN"]

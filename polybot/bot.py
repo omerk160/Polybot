@@ -17,7 +17,7 @@ def get_secret(secret_name):
 
 class ObjectDetectionBot:
     def __init__(self, telegram_token: str, s3_bucket_name: str):
-        secrets = get_secret('polybot-secrets')
+        secrets = get_secret('omer-polybot-secrets')
         if secrets:
             self.mongo_uri = secrets['MONGO_URI']
             self.mongo_db = secrets['MONGO_DB']
