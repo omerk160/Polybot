@@ -156,4 +156,3 @@ class ObjectDetectionBot:
                 self.send_text(chat_id, "I can only process photos. Please send a photo.")
         except Exception as e:
             logger.error(f"Error handling message: {e}")
-            #
