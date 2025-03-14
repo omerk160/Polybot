@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'polybot/**'
+      - '.github/workflows/polybot.yml'  # Include workflow file itself
   workflow_dispatch:
 
 jobs:
@@ -23,16 +24,24 @@ jobs:
       - name: Get Latest Tag from Docker Hub
         id: get-latest-tag
         run: |
-          # Debug: Print raw API response
-          RESPONSE=$(curl -s "https://hub.docker.com/v2/repositories/guymeltzer/polybot/tags/?page_size=25")
-          echo "Raw Docker Hub response: $RESPONSE"
+          echo "Checking for existing tags on guymeltzer/polybot..."
           
-          # Parse tags, handle null or empty results
-          LATEST_TAG=$(echo "$RESPONSE" | jq -r '.results[] | .name' 2>/dev/null | \
-            grep -E '^1\.0\.[0-9]+$' | \
-            sort -V | \
-            tail -n 1)
+          # Try to fetch tags with improved error handling
+          RESPONSE=$(curl -s "https://hub.docker.com/v2/repositories/guymeltzer/polybot/tags/?page_size=25" || echo '{"results":[]}')
           
+          # Check if repository exists by examining response
+          if [[ "$RESPONSE" == *"\"results\":"* ]] && [[ ! "$RESPONSE" == *"\"results\":[]"* ]] && [[ ! "$RESPONSE" == *"object not found"* ]]; then
+            echo "Repository exists, parsing tags..."
+            LATEST_TAG=$(echo "$RESPONSE" | jq -r '.results[] | .name' 2>/dev/null | \
+              grep -E '^1\.0\.[0-9]+$' | \
+              sort -V | \
+              tail -n 1 || echo "")
+          else
+            echo "Repository doesn't exist or is empty."
+            LATEST_TAG=""
+          fi
+          
+          # Use default if no valid tag found
           if [ -z "$LATEST_TAG" ]; then
             echo "No valid tag found, starting with 1.0.124"
             LATEST_TAG="1.0.124"
@@ -58,24 +67,31 @@ jobs:
             guymeltzer/polybot:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-#
+
       - name: Checkout Manifests Repo
         uses: actions/checkout@v3
         with:
-          repository: guymeltzer/PolybotInfra  # Adjust to your manifests repo
-          token: ${{ secrets.GITHUB_TOKEN }}
-          path: k8s/Polybot
+          repository: guymeltzer/PolybotInfra
+          token: ${{ secrets.MANIFEST_TOKEN }}  # Personal Access Token with repo scope
+          path: manifests
 
       - name: Update Deployment with New Tag
         run: |
-          sed -i "s|guymeltzer/polybot:.*|guymeltzer/polybot:${{ steps.get-latest-tag.outputs.NEW_TAG }}|" manifests/polybot-deployment.yaml
-          cat manifests/polybot-deployment.yaml
+          DEPLOYMENT_PATH="manifests/k8s/Polybot/deployment.yaml"
+          echo "Updating $DEPLOYMENT_PATH with new tag: ${{ steps.get-latest-tag.outputs.NEW_TAG }}"
+          sed -i "s|guymeltzer/polybot:.*|guymeltzer/polybot:${{ steps.get-latest-tag.outputs.NEW_TAG }}|" "$DEPLOYMENT_PATH"
+          cat "$DEPLOYMENT_PATH"
 
       - name: Commit and Push Manifest Changes
         run: |
           cd manifests
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add polybot-deployment.yaml
-          git commit -m "Update polybot to ${{ steps.get-latest-tag.outputs.NEW_TAG }}"
-          git push
+          git add k8s/Polybot/deployment.yaml
+          # Only commit if there are changes
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update polybot to ${{ steps.get-latest-tag.outputs.NEW_TAG }}"
+            git push
+          fi
