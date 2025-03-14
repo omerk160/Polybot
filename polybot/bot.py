@@ -47,7 +47,7 @@ class ObjectDetectionBot:
             self.telegram_bot_client.send_message(chat_id, text, parse_mode=parse_mode)
         except telebot.apihelper.ApiTelegramException as e:
             logger.error(f"Failed to send message to chat {chat_id}. Error: {e}")
-            raise  # Re-raise the exception so the caller can handle it
+            raise  # Re-raise to allow callers to handle
         except Exception as e:
             logger.error(f"Unknown error occurred while sending message to chat {chat_id}. Error: {e}")
             raise
@@ -146,9 +146,14 @@ class ObjectDetectionBot:
                         return
 
                     logger.info(f"Image uploaded to S3: {image_url}")
-                    self.send_text(chat_id, f"📤 *Image Uploaded Successfully!*\nURL: {image_url}", parse_mode='Markdown')
-                    self.send_to_sqs(s3_key, image_url, chat_id)
+                    # Try Markdown, fall back to plain text
+                    try:
+                        self.send_text(chat_id, f"*Image Uploaded:*\n{image_url}", parse_mode='Markdown')
+                    except Exception as e:
+                        logger.error(f"Markdown failed: {e}. Sending plain text.")
+                        self.send_text(chat_id, f"Image Uploaded:\n{image_url}")
 
+                    self.send_to_sqs(s3_key, image_url, chat_id)
                     os.remove(photo_path)
                 except Exception as e:
                     logger.error(f"Processing error: {e}")
