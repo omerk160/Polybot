@@ -153,7 +153,7 @@ def handle_results():
     except Exception as e:
         logger.error(f"Error in /results: {e}")
         return "Error", 500
-#
+
 if __name__ == "__main__":
     try:
         app.run(host="0.0.0.0", port=30619, ssl_context=("/app/certs/tls.crt", "/app/certs/tls.key"))
