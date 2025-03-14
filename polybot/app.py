@@ -52,13 +52,13 @@ def check_webhook_status():
             webhook_info = response.json()
             if webhook_info['result']['url']:
                 logger.info(f"Webhook is already set to: {webhook_info['result']['url']}")
-                return True
+                return webhook_info['result']['url']
     except requests.exceptions.RequestException as e:
         logger.error(f"Error checking webhook status: {e}")
-    return False
+    return None
 
 def set_webhook():
-    webhook_url = f"{TELEGRAM_APP_URL}/{TELEGRAM_TOKEN}"
+    webhook_url = f"https://{TELEGRAM_APP_URL}/{TELEGRAM_TOKEN}"  # Ensure HTTPS
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook?url={webhook_url}"
 
     for _ in range(5):
@@ -66,19 +66,24 @@ def set_webhook():
             response = requests.get(url)
             if response.status_code == 200:
                 logger.info(f"Webhook set successfully: {webhook_url}")
-                return
+                return True
             elif response.status_code == 429:
                 retry_after = response.json().get('parameters', {}).get('retry_after', 1)
                 logger.info(f"Too many requests. Retrying after {retry_after} seconds...")
                 time.sleep(retry_after)
             else:
                 logger.error(f"Failed to set webhook: {response.text}")
-                return
+                return False
         except requests.exceptions.RequestException as e:
             logger.error(f"Error setting webhook: {e}")
             time.sleep(2)
+    return False
 
-if not check_webhook_status():
+# Always set the webhook on startup
+current_webhook = check_webhook_status()
+desired_webhook = f"https://{TELEGRAM_APP_URL}/{TELEGRAM_TOKEN}"
+if current_webhook != desired_webhook:
+    logger.info(f"Resetting webhook from {current_webhook} to {desired_webhook}")
     set_webhook()
 
 @app.route(f'/{TELEGRAM_TOKEN}/', methods=['POST'])
@@ -116,7 +121,6 @@ def handle_results():
                 logger.error(f"No chat_id in prediction: {prediction_id}")
                 return "Chat ID missing", 500
 
-            # Plain text message
             if detected_objects:
                 objects_list = "\n".join([f"- {obj['class']} ({float(obj['cx'] + obj['width']) * 100:.1f}%)" for obj in detected_objects])
                 results_text = (
@@ -134,7 +138,7 @@ def handle_results():
                 )
 
             logger.info(f"Sending text: {results_text}")
-            bot.send_text(chat_id, results_text)  # Plain text
+            bot.send_text(chat_id, results_text)
 
             if predicted_img_path:
                 local_img_path = f"/tmp/{prediction_id}.jpg"
@@ -156,6 +160,6 @@ def handle_results():
 
 if __name__ == "__main__":
     try:
-        app.run(host="0.0.0.0", port=30184)
+        app.run(host="0.0.0.0", port=31804)  # Updated to match NodePort
     except Exception as e:
         logger.error(f"Failed to start the Flask app: {e}")
