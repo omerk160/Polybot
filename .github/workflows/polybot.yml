@@ -26,24 +26,36 @@ jobs:
         run: |
           echo "Checking for existing tags on guymeltzer/polybot..."
           RESPONSE=$(curl -s "https://hub.docker.com/v2/repositories/guymeltzer/polybot/tags/?page_size=100&ordering=last_updated")
+          if [ -z "$RESPONSE" ]; then
+            echo "Error: No response from Docker Hub API"
+            exit 1
+          fi
           echo "Full API response:"
           echo "$RESPONSE"
 
           # Check if response has results
-          if [[ "$RESPONSE" == *"\"results\":"* ]] && [[ "$RESPONSE" != *"\"results\":[]"* ]]; then
+          HAS_RESULTS=$(echo "$RESPONSE" | jq -r '.results | length')
+          if [ "$HAS_RESULTS" -gt 0 ]; then
             echo "Valid results found, parsing tags..."
             ALL_TAGS=$(echo "$RESPONSE" | jq -r '.results[].name')
             if [ $? -ne 0 ]; then
               echo "Error: Failed to parse tags with jq"
               exit 1
             fi
-            echo "All available tags: $ALL_TAGS"
+            echo "All available tags:"
+            echo "$ALL_TAGS"
 
             VERSION_TAGS=$(echo "$ALL_TAGS" | grep -E '^1\.0\.[0-9]+$')
-            echo "Version tags: $VERSION_TAGS"
+            echo "Filtered version tags:"
+            echo "$VERSION_TAGS"
 
-            LATEST_TAG=$(echo "$VERSION_TAGS" | sort -V | tail -n 1)
-            echo "Determined latest tag: $LATEST_TAG"
+            if [ -z "$VERSION_TAGS" ]; then
+              echo "No version tags (1.0.x) found"
+              LATEST_TAG=""
+            else
+              LATEST_TAG=$(echo "$VERSION_TAGS" | sort -V | tail -n 1)
+              echo "Determined latest tag: $LATEST_TAG"
+            fi
           else
             echo "No valid results found in API response."
             LATEST_TAG=""
