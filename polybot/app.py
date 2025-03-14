@@ -121,31 +121,37 @@ def handle_results():
                 logger.error(f"No chat_id in prediction: {prediction_id}")
                 return "Chat ID missing", 500
 
-            # Beautified message with Markdown and context
+            # Simplified Markdown message with proper escaping
             if detected_objects:
-                objects_list = "\n".join([f"• *{obj['class']}* (Confidence: {(obj['cx'] + obj['width']) * 100:.1f}%)" for obj in detected_objects])
+                objects_list = "\n".join([f"• _{obj['class']}_ ({float(obj['cx'] + obj['width']) * 100:.1f}%)" for obj in detected_objects])
                 results_text = (
                     f"🎉 *Image Analysis Complete!* 🎉\n"
-                    f"Your uploaded image ({original_img_path}) has been processed.\n"
-                    f"Here's what I found:\n"
+                    f"Your image _{original_img_path}_ has been processed.\n"
+                    f"Detected objects:\n"
                     f"{objects_list}\n"
-                    f"⏳ Processed on: {time.strftime('%Y-%m-%d %H:%M:%S')}"
+                    f"⏳ Time: {time.strftime('%Y-%m-%d %H:%M:%S')}"
                 )
             else:
                 results_text = (
                     f"🔍 *Image Analysis Complete!* 🔍\n"
-                    f"Your uploaded image ({original_img_path}) has been processed.\n"
-                    f"No objects were detected this time.\n"
-                    f"⏳ Processed on: {time.strftime('%Y-%m-%d %H:%M:%S')}"
+                    f"Your image _{original_img_path}_ has been processed.\n"
+                    f"No objects detected.\n"
+                    f"⏳ Time: {time.strftime('%Y-%m-%d %H:%M:%S')}"
                 )
 
-            bot.send_text(chat_id, results_text, parse_mode='Markdown')
+            # Try sending with Markdown, fallback to plain text if it fails
+            try:
+                bot.send_text(chat_id, results_text, parse_mode='Markdown')
+            except Exception as e:
+                logger.error(f"Markdown failed: {e}. Sending plain text instead.")
+                plain_text = results_text.replace('*', '').replace('_', '')
+                bot.send_text(chat_id, plain_text)
 
             if predicted_img_path:
                 local_img_path = f"/tmp/{prediction_id}.jpg"
                 try:
                     s3_client.download_file(S3_BUCKET_NAME, predicted_img_path, local_img_path)
-                    bot.send_photo(chat_id, local_img_path, caption="📸 Here’s your image with detected objects highlighted!")
+                    bot.send_photo(chat_id, local_img_path, caption="📸 Here’s your image with detected objects!")
                     os.remove(local_img_path)
                 except Exception as e:
                     logger.error(f"Failed to send image: {e}")
