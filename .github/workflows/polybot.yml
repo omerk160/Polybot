@@ -62,9 +62,9 @@ jobs:
       - name: Checkout Manifests Repo
         uses: actions/checkout@v3
         with:
-          repository: guymeltzer/manifests  # Adjust to your manifests repo
+          repository: guymeltzer/PolybotInfra  # Adjust to your manifests repo
           token: ${{ secrets.GITHUB_TOKEN }}
-          path: manifests
+          path: k8s/Polybot
 
       - name: Update Deployment with New Tag
         run: |
