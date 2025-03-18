@@ -59,7 +59,7 @@ def check_webhook_status():
 
 def set_webhook():
     webhook_url = f"https://{TELEGRAM_APP_URL}/{TELEGRAM_TOKEN}"  # Ensure HTTPS
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook?url={webhook_url}"
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook?url=https%3A%2F%2Fomer-polybot-lb.devops-int-college.com%2F8180327922%3AAAGSvC29jjSnW_ozHgY86M2VV0dBEl02b18"
 
     for _ in range(5):
         try:
